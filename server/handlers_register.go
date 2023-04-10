@@ -26,6 +26,11 @@ func (a *Api) RegisterInitialize() echo.HandlerFunc {
 			return err
 		}
 
+		_, err = a.d.GetUser()
+		if err == nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "user already exists")
+		}
+
 		user := models.NewUser(email, email)
 		registerOptions := func(credCreationOpts *protocol.PublicKeyCredentialCreationOptions) {
 			credCreationOpts.Parameters = []protocol.CredentialParameter{
@@ -60,20 +65,38 @@ func (a *Api) RegisterInitialize() echo.HandlerFunc {
 }
 
 func (a *Api) RegisterFinalize() echo.HandlerFunc {
+	type input struct {
+		CredentialName   string                              `json:"name" validate:"required,alphanum"`
+		CreationResponse protocol.CredentialCreationResponse `json:"creation_response"`
+	}
 	return func(c echo.Context) error {
 		user := c.Get("user").(*models.User)
+
+		var in input
+		if err := c.Bind(&in); err != nil {
+			return err
+		}
+		if err := c.Validate(&in); err != nil {
+			return err
+		}
+
 		session, ok := user.WebauthnData.Sessions[RegistrationKey]
 		if !ok {
 			return echo.NewHTTPError(http.StatusBadRequest, "registration must be initialized beforehand")
 		}
 		delete(user.WebauthnData.Sessions, RegistrationKey)
 
-		cred, err := a.w.FinishRegistration(user.WebauthnData, session, c.Request())
+		ccr, err := in.CreationResponse.Parse()
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
-		user.WebauthnData.Credentials["Default"] = *cred
+		cred, err := a.w.CreateCredential(user.WebauthnData, session, ccr)
+		if err != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+		}
+
+		user.WebauthnData.Credentials[in.CredentialName] = *cred
 
 		//Create a default wallet for the user
 		wallet, err := models.NewWallet("Default", false)

@@ -1,16 +1,40 @@
 package server
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
 	"fmt"
-	"github.com/Leantar/elonwallet-function/datastore"
+	"github.com/Leantar/elonwallet-function/models"
+	"github.com/Leantar/elonwallet-function/repository"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/rs/zerolog/log"
 	"net/http"
+	"os"
 )
 
 func (s *Server) registerRoutes() error {
-	d := datastore.NewJsonFile(".")
+	d := repository.NewJsonFile(".")
 
-	api, err := NewApi(d)
+	//TODO clean this up
+	signingKey, err := d.GetSigningKey()
+	if os.IsNotExist(err) {
+		pk, sk, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			log.Fatal().Caller().Err(err).Msg("failed to generate jwt signing key")
+		}
+		signingKey = models.SigningKey{
+			PrivateKey: sk,
+			PublicKey:  pk,
+		}
+		err = d.SaveSigningKey(signingKey)
+		if err != nil {
+			log.Fatal().Caller().Err(err).Msg("failed to save jwt signing key")
+		}
+	} else if err != nil {
+		log.Fatal().Caller().Err(err).Msg("failed to get jwt signing key")
+	}
+
+	api, err := NewApi(d, signingKey)
 	if err != nil {
 		return fmt.Errorf("failed to create new api: %w", err)
 	}
@@ -40,7 +64,7 @@ func (s *Server) registerRoutes() error {
 
 	s.echo.GET("/networks", api.GetNetworks(), api.checkAuthentication())
 
-	s.echo.GET("/jwt-verification-key", api.HandleGetJWTVerificationKey(), api.manageUser())
+	s.echo.GET("/jwt-verification-key", api.HandleGetJWTVerificationKey())
 
 	return nil
 }

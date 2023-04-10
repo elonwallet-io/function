@@ -18,15 +18,18 @@ const (
 type Datastore interface {
 	GetUser() (models.User, error)
 	SaveUser(u models.User) error
+	SaveSigningKey(s models.SigningKey) error
+	GetSigningKey() (models.SigningKey, error)
 }
 
 type Api struct {
-	w  *webauthn.WebAuthn
-	d  Datastore
-	mu sync.Mutex
+	w          *webauthn.WebAuthn
+	d          Datastore
+	mu         sync.Mutex
+	signingKey models.SigningKey
 }
 
-func NewApi(d Datastore) (*Api, error) {
+func NewApi(d Datastore, signingKey models.SigningKey) (*Api, error) {
 	w, err := webauthn.New(&webauthn.Config{
 		RPID:          "localhost",
 		RPDisplayName: "ElonWallet",
@@ -40,8 +43,9 @@ func NewApi(d Datastore) (*Api, error) {
 	}
 
 	return &Api{
-		w:  w,
-		d:  d,
-		mu: sync.Mutex{},
+		w:          w,
+		d:          d,
+		mu:         sync.Mutex{},
+		signingKey: signingKey,
 	}, nil
 }

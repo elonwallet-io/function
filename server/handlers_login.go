@@ -47,7 +47,7 @@ func (a *Api) LoginFinalize() echo.HandlerFunc {
 			}
 		}
 
-		jwtString, err := CreateJWT(credName, user.JWTSigningKey)
+		jwtString, err := CreateJWT(credName, a.signingKey.PrivateKey)
 		if err != nil {
 			return fmt.Errorf("failed to create jwt: %w", err)
 		}

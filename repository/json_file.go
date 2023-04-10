@@ -1,11 +1,16 @@
-package datastore
+package repository
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/Leantar/elonwallet-function/models"
 	"os"
 	"sync"
+)
+
+var (
+	ErrNotFound = errors.New("element does not exist")
 )
 
 type JsonFile struct {
@@ -30,6 +35,19 @@ func (j *JsonFile) SaveUser(user models.User) error {
 	path := fmt.Sprintf("%s/user_data.json", j.rootPath)
 
 	return j.saveData(path, &user)
+}
+
+func (j *JsonFile) SaveSigningKey(signingKey models.SigningKey) error {
+	path := fmt.Sprintf("%s/signing_key.json", j.rootPath)
+
+	return j.saveData(path, &signingKey)
+}
+
+func (j *JsonFile) GetSigningKey() (signingKey models.SigningKey, err error) {
+	path := fmt.Sprintf("%s/signing_key.json", j.rootPath)
+
+	err = j.loadData(path, &signingKey)
+	return
 }
 
 func (j *JsonFile) loadData(path string, output any) error {
