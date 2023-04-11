@@ -29,7 +29,7 @@ func main() {
 
 func run() error {
 	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, os.Kill, syscall.SIGTERM)
+	signal.Notify(stop, syscall.SIGTERM)
 
 	var cfg config.Config
 	err := config.FromEnv(&cfg)
