@@ -33,7 +33,6 @@ func (a *Api) LoginInitialize() echo.HandlerFunc {
 	}
 }
 
-// LoginFinalize proxies the login of a user
 func (a *Api) LoginFinalize() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		user, err := a.repo.GetUser()

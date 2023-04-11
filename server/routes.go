@@ -18,9 +18,11 @@ func (s *Server) registerRoutes() error {
 	s.echo.GET("/login/initialize", api.LoginInitialize())
 	s.echo.POST("/login/finalize", api.LoginFinalize())
 
+	s.echo.GET("/logout", api.Logout(), customMiddleware.CheckAuthentication(s.key.PublicKey))
+
 	s.echo.GET("/transaction/initialize", api.TransactionInitialize(), customMiddleware.CheckAuthentication(s.key.PublicKey))
 	s.echo.POST("/transaction/finalize", api.TransactionFinalize(), customMiddleware.CheckAuthentication(s.key.PublicKey))
-	s.echo.GET("/fees", api.EstimateFees())
+	s.echo.GET("/fees", api.EstimateFees(), customMiddleware.CheckAuthentication(s.key.PublicKey))
 
 	s.echo.GET("/credentials/initialize", api.CreateCredentialInitialize(), customMiddleware.CheckAuthentication(s.key.PublicKey))
 	s.echo.POST("/credentials/finalize", api.CreateCredentialFinalize(), customMiddleware.CheckAuthentication(s.key.PublicKey))
