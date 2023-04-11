@@ -2,45 +2,39 @@ package server
 
 import (
 	"fmt"
-	"github.com/Leantar/elonwallet-function/datastore"
-	"github.com/labstack/echo/v4/middleware"
-	"net/http"
+	"github.com/Leantar/elonwallet-function/server/handlers"
+	customMiddleware "github.com/Leantar/elonwallet-function/server/middleware"
 )
 
 func (s *Server) registerRoutes() error {
-	d := datastore.NewJsonFile(".")
-
-	api, err := NewApi(d)
+	api, err := handlers.NewApi(s.cfg, s.repo, s.key)
 	if err != nil {
 		return fmt.Errorf("failed to create new api: %w", err)
 	}
 
-	s.echo.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins:     []string{s.cfg.Server.CorsAllowedUrl},
-		AllowMethods:     []string{http.MethodHead, http.MethodGet, http.MethodPost, http.MethodDelete, http.MethodPut},
-		AllowCredentials: true,
-	}))
 	s.echo.GET("/register/initialize", api.RegisterInitialize())
-	s.echo.POST("/register/finalize", api.RegisterFinalize(), api.manageUser())
+	s.echo.POST("/register/finalize", api.RegisterFinalize())
 
-	s.echo.GET("/login/initialize", api.LoginInitialize(), api.manageUser())
-	s.echo.POST("/login/finalize", api.LoginFinalize(), api.manageUser())
+	s.echo.GET("/login/initialize", api.LoginInitialize())
+	s.echo.POST("/login/finalize", api.LoginFinalize())
 
-	s.echo.GET("/transaction/initialize", api.TransactionInitialize(), api.checkAuthentication(), api.manageUser())
-	s.echo.POST("/transaction/finalize", api.TransactionFinalize(), api.checkAuthentication(), api.manageUser())
-	s.echo.GET("/fees", api.EstimateFees())
+	s.echo.GET("/logout", api.Logout(), customMiddleware.CheckAuthentication(s.key.PublicKey))
 
-	s.echo.GET("/credentials/initialize", api.CreateCredentialInitialize(), api.checkAuthentication(), api.manageUser())
-	s.echo.POST("/credentials/finalize", api.CreateCredentialFinalize(), api.checkAuthentication(), api.manageUser())
-	s.echo.DELETE("/credentials/:name", api.RemoveCredential(), api.checkAuthentication(), api.manageUser())
-	s.echo.GET("/credentials", api.GetCredentials(), api.checkAuthentication(), api.manageUser())
+	s.echo.GET("/transaction/initialize", api.TransactionInitialize(), customMiddleware.CheckAuthentication(s.key.PublicKey))
+	s.echo.POST("/transaction/finalize", api.TransactionFinalize(), customMiddleware.CheckAuthentication(s.key.PublicKey))
+	s.echo.GET("/fees", api.EstimateFees(), customMiddleware.CheckAuthentication(s.key.PublicKey))
 
-	s.echo.POST("/wallets", api.CreateWallet(), api.checkAuthentication(), api.manageUser())
-	s.echo.GET("/wallets", api.GetWallets(), api.checkAuthentication(), api.manageUser())
+	s.echo.GET("/credentials/initialize", api.CreateCredentialInitialize(), customMiddleware.CheckAuthentication(s.key.PublicKey))
+	s.echo.POST("/credentials/finalize", api.CreateCredentialFinalize(), customMiddleware.CheckAuthentication(s.key.PublicKey))
+	s.echo.DELETE("/credentials/:name", api.RemoveCredential(), customMiddleware.CheckAuthentication(s.key.PublicKey))
+	s.echo.GET("/credentials", api.GetCredentials(), customMiddleware.CheckAuthentication(s.key.PublicKey))
 
-	s.echo.GET("/networks", api.GetNetworks(), api.checkAuthentication())
+	s.echo.POST("/wallets", api.CreateWallet(), customMiddleware.CheckAuthentication(s.key.PublicKey))
+	s.echo.GET("/wallets", api.GetWallets(), customMiddleware.CheckAuthentication(s.key.PublicKey))
 
-	s.echo.GET("/jwt-verification-key", api.HandleGetJWTVerificationKey(), api.manageUser())
+	s.echo.GET("/networks", api.GetNetworks(), customMiddleware.CheckAuthentication(s.key.PublicKey))
+
+	s.echo.GET("/jwt-verification-key", api.HandleGetJWTVerificationKey())
 
 	return nil
 }

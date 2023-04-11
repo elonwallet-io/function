@@ -1,4 +1,4 @@
-package server
+package handlers
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 
 func (a *Api) EstimateFees() echo.HandlerFunc {
 	type input struct {
-		Chain string `validate:"required,hexadecimal"`
+		Chain string `query:"chain" validate:"required,hexadecimal"`
 	}
 	type output struct {
 		EstimatedFees string `json:"estimated_fees"`
@@ -18,8 +18,9 @@ func (a *Api) EstimateFees() echo.HandlerFunc {
 		Tip           string `json:"tip"`
 	}
 	return func(c echo.Context) error {
-		in := input{
-			Chain: c.QueryParam("chain"),
+		var in input
+		if err := c.Bind(&in); err != nil {
+			return err
 		}
 		if err := c.Validate(&in); err != nil {
 			return err
