@@ -24,10 +24,10 @@ func (s *Server) registerRoutes() error {
 	s.echo.POST("/transaction/finalize", api.TransactionFinalize(), customMiddleware.CheckAuthentication(s.key.PublicKey))
 	s.echo.GET("/fees", api.EstimateFees(), customMiddleware.CheckAuthentication(s.key.PublicKey))
 
-	s.echo.GET("/credentials/initialize", api.CreateCredentialInitialize(), customMiddleware.CheckAuthentication(s.key.PublicKey))
-	s.echo.POST("/credentials/finalize", api.CreateCredentialFinalize(), customMiddleware.CheckAuthentication(s.key.PublicKey))
-	s.echo.DELETE("/credentials/:name", api.RemoveCredential(), customMiddleware.CheckAuthentication(s.key.PublicKey))
-	s.echo.GET("/credentials", api.GetCredentials(), customMiddleware.CheckAuthentication(s.key.PublicKey))
+	s.echo.GET("/credentials/initialize", api.CreateCredentialInitialize(), customMiddleware.CheckStrictAuthentication(s.key.PublicKey))
+	s.echo.POST("/credentials/finalize", api.CreateCredentialFinalize(), customMiddleware.CheckStrictAuthentication(s.key.PublicKey))
+	s.echo.DELETE("/credentials/:name", api.RemoveCredential(), customMiddleware.CheckStrictAuthentication(s.key.PublicKey))
+	s.echo.GET("/credentials", api.GetCredentials(), customMiddleware.CheckStrictAuthentication(s.key.PublicKey))
 
 	s.echo.POST("/wallets", api.CreateWallet(), customMiddleware.CheckAuthentication(s.key.PublicKey))
 	s.echo.GET("/wallets", api.GetWallets(), customMiddleware.CheckAuthentication(s.key.PublicKey))
