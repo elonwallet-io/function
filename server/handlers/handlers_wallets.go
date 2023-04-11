@@ -1,4 +1,4 @@
-package server
+package handlers
 
 import (
 	"fmt"
@@ -17,7 +17,10 @@ func (a *Api) GetWallets() echo.HandlerFunc {
 		Wallets []redactedWallet `json:"wallets"`
 	}
 	return func(c echo.Context) error {
-		user := c.Get("user").(*models.User)
+		user, err := a.repo.GetUser()
+		if err != nil {
+			return fmt.Errorf("failed to get user: %w", err)
+		}
 
 		redactedWallets := make([]redactedWallet, len(user.Wallets))
 		for i, wallet := range user.Wallets {
@@ -40,14 +43,17 @@ func (a *Api) CreateWallet() echo.HandlerFunc {
 		Public bool   `json:"public"`
 	}
 	return func(c echo.Context) error {
-		user := c.Get("user").(*models.User)
-
 		var in input
 		if err := c.Bind(&in); err != nil {
 			return err
 		}
 		if err := c.Validate(&in); err != nil {
 			return err
+		}
+
+		user, err := a.repo.GetUser()
+		if err != nil {
+			return fmt.Errorf("failed to get user: %w", err)
 		}
 
 		if user.Wallets.Exists(in.Name) {
@@ -60,6 +66,11 @@ func (a *Api) CreateWallet() echo.HandlerFunc {
 		}
 
 		user.Wallets = append(user.Wallets, wallet)
+
+		err = a.repo.UpsertUser(user)
+		if err != nil {
+			return fmt.Errorf("failed to update user: %w", err)
+		}
 
 		return c.NoContent(http.StatusCreated)
 	}

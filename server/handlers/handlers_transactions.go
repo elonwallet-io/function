@@ -1,4 +1,4 @@
-package server
+package handlers
 
 import (
 	"context"
@@ -27,7 +27,10 @@ type transactionData struct {
 
 func (a *Api) TransactionInitialize() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user := c.Get("user").(*models.User)
+		user, err := a.repo.GetUser()
+		if err != nil {
+			return fmt.Errorf("failed to get user: %w", err)
+		}
 
 		options, session, err := a.w.BeginLogin(user.WebauthnData)
 		if err != nil {
@@ -35,6 +38,11 @@ func (a *Api) TransactionInitialize() echo.HandlerFunc {
 		}
 
 		user.WebauthnData.Sessions[TransactionKey] = *session
+
+		err = a.repo.UpsertUser(user)
+		if err != nil {
+			return fmt.Errorf("failed to update user: %w", err)
+		}
 
 		return c.JSON(http.StatusOK, options)
 	}
@@ -53,13 +61,6 @@ func (a *Api) TransactionFinalize() echo.HandlerFunc {
 		TransactionInfo   transactionInfo                      `json:"transaction_info"`
 	}
 	return func(c echo.Context) error {
-		user := c.Get("user").(*models.User)
-		session, ok := user.WebauthnData.Sessions[TransactionKey]
-		if !ok {
-			return echo.NewHTTPError(http.StatusBadRequest, "transaction must be initialized beforehand")
-		}
-		delete(user.WebauthnData.Sessions, TransactionKey)
-
 		var in input
 		if err := c.Bind(&in); err != nil {
 			return err
@@ -67,6 +68,17 @@ func (a *Api) TransactionFinalize() echo.HandlerFunc {
 		if err := c.Validate(&in); err != nil {
 			return err
 		}
+
+		user, err := a.repo.GetUser()
+		if err != nil {
+			return fmt.Errorf("failed to get user: %w", err)
+		}
+
+		session, ok := user.WebauthnData.Sessions[TransactionKey]
+		if !ok {
+			return echo.NewHTTPError(http.StatusBadRequest, "transaction must be initialized beforehand")
+		}
+		delete(user.WebauthnData.Sessions, TransactionKey)
 
 		car, err := in.AssertionResponse.Parse()
 		if err != nil {
@@ -107,6 +119,11 @@ func (a *Api) TransactionFinalize() echo.HandlerFunc {
 			return fmt.Errorf("failed to send transaction: %w", err)
 		}
 
+		err = a.repo.UpsertUser(user)
+		if err != nil {
+			return fmt.Errorf("failed to update user: %w", err)
+		}
+
 		return c.NoContent(http.StatusOK)
 	}
 }
@@ -133,7 +150,6 @@ func sendNativeTransaction(data transactionData, ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to suggest fee cap: %w", err)
 	}
-	fmt.Printf("fee cap: %v\n", feeCap)
 
 	//Check balance to prevent error later
 	balance, err := client.BalanceAt(ctx, fromAddress, nil)
@@ -150,7 +166,6 @@ func sendNativeTransaction(data transactionData, ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to suggest tip cap: %w", err)
 	}
-	fmt.Printf("tip cap: %v\n", tip)
 
 	chainID := new(big.Int).SetInt64(data.network.Chain)
 

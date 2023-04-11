@@ -2,10 +2,11 @@ package server
 
 import (
 	"context"
+	"github.com/Leantar/elonwallet-function/models"
+	"github.com/Leantar/elonwallet-function/server/common"
+	customMiddleware "github.com/Leantar/elonwallet-function/server/middleware"
 	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4/middleware"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"net/http"
 	"time"
 
@@ -16,9 +17,11 @@ import (
 type Server struct {
 	echo *echo.Echo
 	cfg  config.Config
+	key  models.SigningKey
+	repo common.Repository
 }
 
-func New(cfg config.Config) *Server {
+func New(cfg config.Config, key models.SigningKey, repo common.Repository) *Server {
 	e := echo.New()
 	e.Server.ReadTimeout = 5 * time.Second
 	e.Server.WriteTimeout = 10 * time.Second
@@ -28,40 +31,16 @@ func New(cfg config.Config) *Server {
 		validator: validator.New(),
 	}
 	e.Validator = &cv
+
 	e.Use(middleware.RequestID())
-	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
-		LogLatency:   true,
-		LogRemoteIP:  true,
-		LogMethod:    true,
-		LogURI:       true,
-		LogRequestID: true,
-		LogStatus:    true,
-		LogError:     true,
-		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
-			var evt *zerolog.Event
+	e.Use(customMiddleware.RequestLogger())
+	e.Use(customMiddleware.Cors(cfg.FrontendURL))
 
-			_, ok := v.Error.(*echo.HTTPError)
-			if v.Error == nil || ok {
-				evt = log.Debug()
-
-			} else {
-				evt = log.Warn()
-			}
-			evt.Str("request_id", v.RequestID).
-				Dur("latency", v.Latency).
-				Str("remote_ip", v.RemoteIP).
-				Str("method", v.Method).
-				Str("uri", v.URI).
-				Int("status", v.Status).
-				Err(v.Error).
-				Msg("request")
-
-			return nil
-		},
-	}))
 	return &Server{
 		echo: e,
 		cfg:  cfg,
+		key:  key,
+		repo: repo,
 	}
 }
 

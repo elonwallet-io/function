@@ -1,9 +1,9 @@
-package server
+package handlers
 
 import (
-	"github.com/Leantar/elonwallet-function/models"
+	"fmt"
+	"github.com/Leantar/elonwallet-function/server/common"
 	"github.com/go-webauthn/webauthn/protocol"
-	"github.com/go-webauthn/webauthn/protocol/webauthncose"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	"net/http"
@@ -11,33 +11,23 @@ import (
 
 func (a *Api) CreateCredentialInitialize() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user := c.Get("user").(*models.User)
-
-		registerOptions := func(credCreationOpts *protocol.PublicKeyCredentialCreationOptions) {
-			credCreationOpts.Parameters = []protocol.CredentialParameter{
-				{
-					Type:      protocol.PublicKeyCredentialType,
-					Algorithm: webauthncose.AlgEdDSA,
-				},
-				{
-					Type:      protocol.PublicKeyCredentialType,
-					Algorithm: webauthncose.AlgES256,
-				},
-				{
-					Type:      protocol.PublicKeyCredentialType,
-					Algorithm: webauthncose.AlgRS256,
-				},
-			}
-			credCreationOpts.Attestation = protocol.PreferNoAttestation
-			credCreationOpts.CredentialExcludeList = user.WebauthnData.CredentialExcludeList()
+		user, err := a.repo.GetUser()
+		if err != nil {
+			return fmt.Errorf("failed to get user: %w", err)
 		}
 
-		options, session, err := a.w.BeginRegistration(user.WebauthnData, registerOptions)
+		registrationOptions := common.GetCreationOptions(user.WebauthnData.CredentialExcludeList())
+
+		options, session, err := a.w.BeginRegistration(user.WebauthnData, registrationOptions)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
 		user.WebauthnData.Sessions[AddCredentialKey] = *session
+		err = a.repo.UpsertUser(user)
+		if err != nil {
+			return fmt.Errorf("failed to update user: %w", err)
+		}
 
 		return c.JSON(http.StatusOK, options)
 	}
@@ -49,14 +39,17 @@ func (a *Api) CreateCredentialFinalize() echo.HandlerFunc {
 		CreationResponse protocol.CredentialCreationResponse `json:"creation_response"`
 	}
 	return func(c echo.Context) error {
-		user := c.Get("user").(*models.User)
-
 		var in input
 		if err := c.Bind(&in); err != nil {
 			return err
 		}
 		if err := c.Validate(&in); err != nil {
 			return err
+		}
+
+		user, err := a.repo.GetUser()
+		if err != nil {
+			return fmt.Errorf("failed to get user: %w", err)
 		}
 
 		_, ok := user.WebauthnData.Credentials[in.CredentialName]
@@ -81,28 +74,50 @@ func (a *Api) CreateCredentialFinalize() echo.HandlerFunc {
 		}
 
 		user.WebauthnData.Credentials[in.CredentialName] = *cred
+		err = a.repo.UpsertUser(user)
+		if err != nil {
+			return fmt.Errorf("failed to update user: %w", err)
+		}
 
 		return c.NoContent(http.StatusOK)
 	}
 }
 
 func (a *Api) RemoveCredential() echo.HandlerFunc {
+	type input struct {
+		CredentialName string `param:"name" validate:"required,alphanum"`
+	}
 	return func(c echo.Context) error {
-		user := c.Get("user").(*models.User)
-		claims := c.Get("claims").(jwt.MapClaims)
-		credName := c.Param("name")
+		var in input
+		if err := c.Bind(&in); err != nil {
+			return err
+		}
+		if err := c.Validate(&in); err != nil {
+			return err
+		}
 
-		_, ok := user.WebauthnData.Credentials[credName]
+		claims := c.Get("claims").(jwt.MapClaims)
+
+		user, err := a.repo.GetUser()
+		if err != nil {
+			return fmt.Errorf("failed to get user: %w", err)
+		}
+
+		_, ok := user.WebauthnData.Credentials[in.CredentialName]
 		if !ok {
 			return echo.NewHTTPError(http.StatusNotFound, "Credential does not exist")
 		}
 
 		loginCred := claims["credential"].(string)
-		if loginCred == credName {
+		if loginCred == in.CredentialName {
 			return echo.NewHTTPError(http.StatusBadRequest, "You cannot delete the credential you are currently logged in with")
 		}
+		delete(user.WebauthnData.Credentials, in.CredentialName)
 
-		delete(user.WebauthnData.Credentials, credName)
+		err = a.repo.UpsertUser(user)
+		if err != nil {
+			return fmt.Errorf("failed to update user: %w", err)
+		}
 
 		return c.NoContent(http.StatusOK)
 	}
@@ -117,9 +132,13 @@ func (a *Api) GetCredentials() echo.HandlerFunc {
 		Credentials []credential `json:"credentials"`
 	}
 	return func(c echo.Context) error {
-		user := c.Get("user").(*models.User)
 		claims := c.Get("claims").(jwt.MapClaims)
 		currentCred := claims["credential"].(string)
+
+		user, err := a.repo.GetUser()
+		if err != nil {
+			return fmt.Errorf("failed to get user: %w", err)
+		}
 
 		credentials := make([]credential, len(user.WebauthnData.Credentials))
 		i := 0

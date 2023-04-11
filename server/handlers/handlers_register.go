@@ -1,62 +1,45 @@
-package server
+package handlers
 
 import (
+	"errors"
 	"fmt"
 	"github.com/Leantar/elonwallet-function/models"
+	"github.com/Leantar/elonwallet-function/server/common"
 	"github.com/go-webauthn/webauthn/protocol"
-	"github.com/go-webauthn/webauthn/protocol/webauthncose"
 	"github.com/labstack/echo/v4"
 	"net/http"
-	"net/url"
 )
 
 func (a *Api) RegisterInitialize() echo.HandlerFunc {
 	type input struct {
-		Email string `validate:"required,email"`
+		Email string `query:"email" validate:"required,email"`
 	}
 	return func(c echo.Context) error {
-		email, err := url.QueryUnescape(c.QueryParam("email"))
-		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, "invalid escape sequence").SetInternal(err)
-		}
-		in := input{
-			Email: email,
+		var in input
+		if err := c.Bind(&in); err != nil {
+			return err
 		}
 		if err := c.Validate(&in); err != nil {
 			return err
 		}
 
-		_, err = a.d.GetUser()
+		_, err := a.repo.GetUser()
 		if err == nil {
-			return echo.NewHTTPError(http.StatusBadRequest, "user already exists")
+			return echo.NewHTTPError(http.StatusBadRequest, "user is already registered")
+		} else if err != nil && !errors.Is(err, common.ErrNotFound) {
+			return fmt.Errorf("failed to check if user exists: %w", err)
 		}
 
-		user := models.NewUser(email, email)
-		registerOptions := func(credCreationOpts *protocol.PublicKeyCredentialCreationOptions) {
-			credCreationOpts.Parameters = []protocol.CredentialParameter{
-				{
-					Type:      protocol.PublicKeyCredentialType,
-					Algorithm: webauthncose.AlgEdDSA,
-				},
-				{
-					Type:      protocol.PublicKeyCredentialType,
-					Algorithm: webauthncose.AlgES256,
-				},
-				{
-					Type:      protocol.PublicKeyCredentialType,
-					Algorithm: webauthncose.AlgRS256,
-				},
-			}
-			credCreationOpts.Attestation = protocol.PreferNoAttestation
-		}
+		user := models.NewUser(in.Email, in.Email)
+		registrationOptions := common.GetCreationOptions(nil)
 
-		options, session, err := a.w.BeginRegistration(user.WebauthnData, registerOptions)
+		options, session, err := a.w.BeginRegistration(user.WebauthnData, registrationOptions)
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
 		user.WebauthnData.Sessions[RegistrationKey] = *session
-		if err := a.d.SaveUser(user); err != nil {
+		if err := a.repo.UpsertUser(user); err != nil {
 			return fmt.Errorf("failed to save user: %w", err)
 		}
 
@@ -70,14 +53,17 @@ func (a *Api) RegisterFinalize() echo.HandlerFunc {
 		CreationResponse protocol.CredentialCreationResponse `json:"creation_response"`
 	}
 	return func(c echo.Context) error {
-		user := c.Get("user").(*models.User)
-
 		var in input
 		if err := c.Bind(&in); err != nil {
 			return err
 		}
 		if err := c.Validate(&in); err != nil {
 			return err
+		}
+
+		user, err := a.repo.GetUser()
+		if err != nil {
+			return fmt.Errorf("failed to get user: %w", err)
 		}
 
 		session, ok := user.WebauthnData.Sessions[RegistrationKey]
@@ -104,6 +90,11 @@ func (a *Api) RegisterFinalize() echo.HandlerFunc {
 			return fmt.Errorf("failed to create new wallet: %w", err)
 		}
 		user.Wallets = append(user.Wallets, wallet)
+
+		err = a.repo.UpsertUser(user)
+		if err != nil {
+			return fmt.Errorf("failed to update user: %w", err)
+		}
 
 		return c.NoContent(http.StatusOK)
 	}

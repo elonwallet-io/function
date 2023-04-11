@@ -1,9 +1,7 @@
 package config
 
 type Config struct {
-	Server ServerConfig
-}
-
-type ServerConfig struct {
-	CorsAllowedUrl string `env:"CORS_ALLOWED_URL" validate:"required"`
+	FrontendDomain string `env:"FRONTEND_DOMAIN" validate:"required"`
+	FrontendURL    string `env:"FRONTEND_URL" validate:"required"`
+	RepositoryPath string `env:"REPOSITORY_PATH" validate:"required"`
 }
