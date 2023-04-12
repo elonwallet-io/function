@@ -31,6 +31,7 @@ func New(cfg config.Config, key models.SigningKey, repo common.Repository) *Serv
 		validator: validator.New(),
 	}
 	e.Validator = &cv
+	e.Binder = &BinderWithURLDecoding{&echo.DefaultBinder{}}
 
 	e.Use(middleware.RequestID())
 	e.Use(customMiddleware.RequestLogger())
