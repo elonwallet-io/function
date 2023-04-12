@@ -23,14 +23,14 @@ func (a *Api) RegisterInitialize() echo.HandlerFunc {
 			return err
 		}
 
-		_, err := a.repo.GetUser()
-		if err == nil {
+		user, err := a.repo.GetUser()
+		if len(user.WebauthnData.Credentials) > 0 {
 			return echo.NewHTTPError(http.StatusBadRequest, "user is already registered")
 		} else if err != nil && !errors.Is(err, common.ErrNotFound) {
 			return fmt.Errorf("failed to check if user exists: %w", err)
 		}
 
-		user := models.NewUser(in.Email, in.Email)
+		user = models.NewUser(in.Email, in.Email)
 		registrationOptions := common.GetCreationOptions(nil)
 
 		options, session, err := a.w.BeginRegistration(user.WebauthnData, registrationOptions)
