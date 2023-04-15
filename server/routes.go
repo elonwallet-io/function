@@ -18,21 +18,21 @@ func (s *Server) registerRoutes() error {
 	s.echo.GET("/login/initialize", api.LoginInitialize())
 	s.echo.POST("/login/finalize", api.LoginFinalize())
 
-	s.echo.GET("/logout", api.Logout(), customMiddleware.CheckAuthentication(s.key.PublicKey))
+	s.echo.GET("/logout", api.Logout(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
 
-	s.echo.GET("/transaction/initialize", api.TransactionInitialize(), customMiddleware.CheckAuthentication(s.key.PublicKey))
-	s.echo.POST("/transaction/finalize", api.TransactionFinalize(), customMiddleware.CheckAuthentication(s.key.PublicKey))
-	s.echo.GET("/fees", api.EstimateFees(), customMiddleware.CheckAuthentication(s.key.PublicKey))
+	s.echo.GET("/transaction/initialize", api.TransactionInitialize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
+	s.echo.POST("/transaction/finalize", api.TransactionFinalize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
+	s.echo.GET("/fees", api.EstimateFees(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
 
-	s.echo.GET("/credentials/initialize", api.CreateCredentialInitialize(), customMiddleware.CheckStrictAuthentication(s.key.PublicKey))
-	s.echo.POST("/credentials/finalize", api.CreateCredentialFinalize(), customMiddleware.CheckStrictAuthentication(s.key.PublicKey))
-	s.echo.DELETE("/credentials/:name", api.RemoveCredential(), customMiddleware.CheckStrictAuthentication(s.key.PublicKey))
-	s.echo.GET("/credentials", api.GetCredentials(), customMiddleware.CheckStrictAuthentication(s.key.PublicKey))
+	s.echo.GET("/credentials/initialize", api.CreateCredentialInitialize(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey))
+	s.echo.POST("/credentials/finalize", api.CreateCredentialFinalize(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey))
+	s.echo.DELETE("/credentials/:name", api.RemoveCredential(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey))
+	s.echo.GET("/credentials", api.GetCredentials(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey))
 
-	s.echo.POST("/wallets", api.CreateWallet(), customMiddleware.CheckAuthentication(s.key.PublicKey))
-	s.echo.GET("/wallets", api.GetWallets(), customMiddleware.CheckAuthentication(s.key.PublicKey))
+	s.echo.POST("/wallets", api.CreateWallet(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
+	s.echo.GET("/wallets", api.GetWallets(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
 
-	s.echo.GET("/networks", api.GetNetworks(), customMiddleware.CheckAuthentication(s.key.PublicKey))
+	s.echo.GET("/networks", api.GetNetworks(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
 
 	s.echo.GET("/jwt-verification-key", api.HandleGetJWTVerificationKey())
 

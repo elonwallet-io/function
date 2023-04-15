@@ -12,17 +12,17 @@ type User struct {
 	Email        string       `json:"email"`
 }
 
-func NewUser(name string, displayName string) User {
+func NewUser(email string, displayName string) User {
 	id, err := uuid.NewRandom()
 	if err != nil {
 		log.Fatal().Caller().Err(err).Msg("failed to generate unique user id")
 	}
 
 	return User{
-		Email: name,
+		Email: email,
 		WebauthnData: WebauthnData{
 			ID:          id.String(),
-			Name:        name,
+			Name:        email,
 			DisplayName: displayName,
 			Credentials: make(map[string]webauthn.Credential),
 			Sessions:    make(map[string]webauthn.SessionData),

@@ -2,32 +2,43 @@ package middleware
 
 import (
 	"crypto/ed25519"
+	"fmt"
 	"github.com/Leantar/elonwallet-function/server/common"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	"net/http"
 	"time"
 )
 
-func CheckAuthentication(pk ed25519.PublicKey) echo.MiddlewareFunc {
+func CheckAuthentication(repo common.Repository, pk ed25519.PublicKey) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			claims, err := checkJWT(c, pk)
+			user, err := repo.GetUser()
+			if err != nil {
+				return fmt.Errorf("failed to get user: %w", err)
+			}
+
+			claims, err := checkJWT(c, user.Email, pk)
 			if err != nil {
 				return err
 			}
 
 			c.Set("claims", claims)
+			c.Set("user", user)
 
 			return next(c)
 		}
 	}
 }
 
-func CheckStrictAuthentication(pk ed25519.PublicKey) echo.MiddlewareFunc {
+func CheckStrictAuthentication(repo common.Repository, pk ed25519.PublicKey) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			claims, err := checkJWT(c, pk)
+			user, err := repo.GetUser()
+			if err != nil {
+				return fmt.Errorf("failed to get user: %w", err)
+			}
+
+			claims, err := checkJWT(c, user.Email, pk)
 			if err != nil {
 				return err
 			}
@@ -43,21 +54,22 @@ func CheckStrictAuthentication(pk ed25519.PublicKey) echo.MiddlewareFunc {
 			}
 
 			c.Set("claims", claims)
+			c.Set("user", user)
 
 			return next(c)
 		}
 	}
 }
 
-func checkJWT(c echo.Context, pk ed25519.PublicKey) (jwt.MapClaims, error) {
+func checkJWT(c echo.Context, email string, pk ed25519.PublicKey) (common.EnclaveClaims, error) {
 	cookie, err := c.Request().Cookie("session")
 	if err != nil {
-		return nil, echo.NewHTTPError(http.StatusUnauthorized, "Missing session cookie")
+		return common.EnclaveClaims{}, echo.NewHTTPError(http.StatusUnauthorized, "Missing session cookie")
 	}
 
-	claims, ok := common.ValidateJWT(cookie.Value, pk)
-	if !ok {
-		return nil, echo.NewHTTPError(http.StatusUnauthorized, "Invalid session cookie")
+	claims, err := common.ValidateEnclaveJWT(cookie.Value, email, pk)
+	if err != nil {
+		return common.EnclaveClaims{}, echo.NewHTTPError(http.StatusUnauthorized, "Invalid session cookie").SetInternal(err)
 	}
 
 	return claims, nil
