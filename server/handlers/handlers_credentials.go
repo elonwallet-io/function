@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/Leantar/elonwallet-function/server/common"
 	"github.com/go-webauthn/webauthn/protocol"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	"net/http"
 )
@@ -96,7 +95,7 @@ func (a *Api) RemoveCredential() echo.HandlerFunc {
 			return err
 		}
 
-		claims := c.Get("claims").(jwt.MapClaims)
+		claims := c.Get("claims").(common.EnclaveClaims)
 
 		user, err := a.repo.GetUser()
 		if err != nil {
@@ -108,8 +107,7 @@ func (a *Api) RemoveCredential() echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusNotFound, "Credential does not exist")
 		}
 
-		loginCred := claims["credential"].(string)
-		if loginCred == in.CredentialName {
+		if claims.Credential == in.CredentialName {
 			return echo.NewHTTPError(http.StatusBadRequest, "You cannot delete the credential you are currently logged in with")
 		}
 		delete(user.WebauthnData.Credentials, in.CredentialName)
@@ -132,8 +130,7 @@ func (a *Api) GetCredentials() echo.HandlerFunc {
 		Credentials []credential `json:"credentials"`
 	}
 	return func(c echo.Context) error {
-		claims := c.Get("claims").(jwt.MapClaims)
-		currentCred := claims["credential"].(string)
+		claims := c.Get("claims").(common.EnclaveClaims)
 
 		user, err := a.repo.GetUser()
 		if err != nil {
@@ -145,7 +142,7 @@ func (a *Api) GetCredentials() echo.HandlerFunc {
 		for name := range user.WebauthnData.Credentials {
 			credentials[i] = credential{
 				Name:          name,
-				CurrentlyUsed: name == currentCred,
+				CurrentlyUsed: name == claims.Credential,
 			}
 			i++
 		}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"fmt"
+	"github.com/Leantar/elonwallet-function/models"
 	"github.com/Leantar/elonwallet-function/server/common"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/labstack/echo/v4"
@@ -54,7 +55,7 @@ func (a *Api) LoginFinalize() echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
-		cookie, err := createSessionCookie(cred, user.WebauthnData.Credentials, a.signingKey.PrivateKey)
+		cookie, err := createSessionCookie(user, cred, a.signingKey.PrivateKey)
 		if err != nil {
 			return err
 		}
@@ -67,7 +68,7 @@ func (a *Api) LoginFinalize() echo.HandlerFunc {
 		}
 
 		//create an auth token to be used with the backend
-		jwtString, err := common.CreateJWT("", "backend", a.signingKey.PrivateKey)
+		jwtString, err := common.CreateBackendJWT(user, a.signingKey.PrivateKey)
 		if err != nil {
 			return fmt.Errorf("failed to create jwt: %w", err)
 		}
@@ -76,16 +77,16 @@ func (a *Api) LoginFinalize() echo.HandlerFunc {
 	}
 }
 
-func createSessionCookie(currentCredential *webauthn.Credential, credentials map[string]webauthn.Credential, sk ed25519.PrivateKey) (*http.Cookie, error) {
+func createSessionCookie(user models.User, currentCredential *webauthn.Credential, sk ed25519.PrivateKey) (*http.Cookie, error) {
 	var currentCredentialName string
-	for name, credential := range credentials {
+	for name, credential := range user.WebauthnData.Credentials {
 		if bytes.Equal(credential.ID, currentCredential.ID) {
 			currentCredentialName = name
 			break
 		}
 	}
 
-	jwtString, err := common.CreateJWT(currentCredentialName, "enclave", sk)
+	jwtString, err := common.CreateEnclaveJWT(user, currentCredentialName, sk)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create jwt: %w", err)
 	}
@@ -96,7 +97,7 @@ func createSessionCookie(currentCredential *webauthn.Credential, credentials map
 		Expires:  time.Now().Add(time.Hour * 24),
 		HttpOnly: true,
 		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		Path:     "/",
 	}, nil
 }

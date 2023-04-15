@@ -24,7 +24,7 @@ type Api struct {
 
 func NewApi(cfg config.Config, repo common.Repository, signingKey models.SigningKey) (*Api, error) {
 	w, err := webauthn.New(&webauthn.Config{
-		RPID:          cfg.FrontendDomain,
+		RPID:          cfg.FrontendHost,
 		RPDisplayName: "ElonWallet",
 		RPOrigins:     []string{cfg.FrontendURL},
 		AuthenticatorSelection: protocol.AuthenticatorSelection{
