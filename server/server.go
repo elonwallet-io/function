@@ -5,7 +5,6 @@ import (
 	"github.com/Leantar/elonwallet-function/models"
 	"github.com/Leantar/elonwallet-function/server/common"
 	customMiddleware "github.com/Leantar/elonwallet-function/server/middleware"
-	"github.com/go-playground/validator/v10"
 	"github.com/labstack/echo/v4/middleware"
 	"net/http"
 	"time"
@@ -27,9 +26,7 @@ func New(cfg config.Config, key models.SigningKey, repo common.Repository) *Serv
 	e.Server.WriteTimeout = 10 * time.Second
 	e.Server.IdleTimeout = 120 * time.Second
 
-	cv := CustomValidator{
-		validator: validator.New(),
-	}
+	cv := newValidator()
 	e.Validator = &cv
 	e.Binder = &BinderWithURLDecoding{&echo.DefaultBinder{}}
 

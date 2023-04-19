@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func CheckAuthentication(repo common.Repository, pk ed25519.PublicKey) echo.MiddlewareFunc {
+func CheckAuthentication(repo common.Repository, pk ed25519.PublicKey, additionalScopes ...string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			user, err := repo.GetUser()
@@ -22,6 +22,10 @@ func CheckAuthentication(repo common.Repository, pk ed25519.PublicKey) echo.Midd
 				return err
 			}
 
+			if len(additionalScopes) > 0 && !checkScopes(additionalScopes, claims) {
+				return echo.NewHTTPError(http.StatusUnauthorized, "Invalid or malformed session")
+			}
+
 			c.Set("claims", claims)
 			c.Set("user", user)
 
@@ -30,7 +34,7 @@ func CheckAuthentication(repo common.Repository, pk ed25519.PublicKey) echo.Midd
 	}
 }
 
-func CheckStrictAuthentication(repo common.Repository, pk ed25519.PublicKey) echo.MiddlewareFunc {
+func CheckStrictAuthentication(repo common.Repository, pk ed25519.PublicKey, additionalScopes ...string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			user, err := repo.GetUser()
@@ -48,9 +52,12 @@ func CheckStrictAuthentication(repo common.Repository, pk ed25519.PublicKey) ech
 				return echo.NewHTTPError(http.StatusUnauthorized, "Invalid session cookie")
 			}
 
-			// Check if the session is older than 15 minutes
-			if iat.Add(time.Minute * 15).Before(time.Now()) {
+			if time.Now().After(iat.Add(time.Minute * 15)) {
 				return echo.NewHTTPError(http.StatusForbidden, "This session is too old to access this resource")
+			}
+
+			if len(additionalScopes) > 0 && !checkScopes(additionalScopes, claims) {
+				return echo.NewHTTPError(http.StatusUnauthorized, "Invalid or malformed session")
 			}
 
 			c.Set("claims", claims)
@@ -69,8 +76,18 @@ func checkJWT(c echo.Context, email string, pk ed25519.PublicKey) (common.Enclav
 
 	claims, err := common.ValidateEnclaveJWT(cookie.Value, email, pk)
 	if err != nil {
-		return common.EnclaveClaims{}, echo.NewHTTPError(http.StatusUnauthorized, "Invalid session cookie").SetInternal(err)
+		return common.EnclaveClaims{}, echo.NewHTTPError(http.StatusUnauthorized, "Invalid or malformed session").SetInternal(err)
 	}
 
 	return claims, nil
+}
+
+func checkScopes(scopes []string, claims common.EnclaveClaims) bool {
+	for _, scope := range scopes {
+		if scope == "all" || claims.Scope == scope {
+			return true
+		}
+	}
+
+	return false
 }
