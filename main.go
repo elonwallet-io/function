@@ -42,7 +42,7 @@ func run() error {
 		return fmt.Errorf("validation of config failed: %w", err)
 	}
 
-	repo := repository.NewJsonFile(".")
+	repo := repository.NewJsonFile()
 	signingKey, err := getSigningKey(repo)
 	if err != nil {
 		return err

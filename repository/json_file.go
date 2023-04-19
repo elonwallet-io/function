@@ -14,9 +14,10 @@ type JsonFile struct {
 	mu       sync.Mutex
 }
 
-func NewJsonFile(rootPath string) *JsonFile {
+func NewJsonFile() *JsonFile {
 	return &JsonFile{
-		rootPath: rootPath,
+		rootPath: "/data",
+		mu:       sync.Mutex{},
 	}
 }
 

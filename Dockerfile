@@ -5,13 +5,18 @@ ENV CGO_ENABLED=0
 COPY . /app/
 WORKDIR /app/
 
-RUN go build -o backend -ldflags="-extldflags=-static -w" .
+RUN mkdir /data && \
+    go build -o backend -ldflags="-extldflags=-static -w" .
 
 FROM gcr.io/distroless/static
 
 COPY --from=build-env --chown=nonroot:nonroot \
     /app/backend \
     /app/
+
+COPY --from=build-env --chown=nonroot:nonroot \
+    /data \
+    /data
 
 USER nonroot:nonroot
 WORKDIR /app/
