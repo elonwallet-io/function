@@ -186,7 +186,7 @@ func generateOTP() (string, error) {
 
 	var sb strings.Builder
 	for i := 0; i < 17; i++ {
-		if i == 5 || i == 10 {
+		if i == 5 || i == 11 {
 			sb.WriteString("-")
 		} else {
 			index, err := rand.Int(rand.Reader, charsetLength)
