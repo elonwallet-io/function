@@ -40,7 +40,7 @@ func (a *Api) RegisterInitialize() echo.HandlerFunc {
 
 		user.WebauthnData.Sessions[RegistrationKey] = *session
 		if err := a.repo.UpsertUser(user); err != nil {
-			return fmt.Errorf("failed to save user: %w", err)
+			return err
 		}
 
 		return c.JSON(http.StatusOK, options)
@@ -63,7 +63,7 @@ func (a *Api) RegisterFinalize() echo.HandlerFunc {
 
 		user, err := a.repo.GetUser()
 		if err != nil {
-			return fmt.Errorf("failed to get user: %w", err)
+			return err
 		}
 
 		session, ok := user.WebauthnData.Sessions[RegistrationKey]
@@ -93,7 +93,7 @@ func (a *Api) RegisterFinalize() echo.HandlerFunc {
 
 		err = a.repo.UpsertUser(user)
 		if err != nil {
-			return fmt.Errorf("failed to update user: %w", err)
+			return err
 		}
 
 		return c.NoContent(http.StatusOK)

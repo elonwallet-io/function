@@ -17,10 +17,7 @@ func (a *Api) GetWallets() echo.HandlerFunc {
 		Wallets []redactedWallet `json:"wallets"`
 	}
 	return func(c echo.Context) error {
-		user, err := a.repo.GetUser()
-		if err != nil {
-			return fmt.Errorf("failed to get user: %w", err)
-		}
+		user := c.Get("user").(models.User)
 
 		redactedWallets := make([]redactedWallet, len(user.Wallets))
 		for i, wallet := range user.Wallets {
@@ -51,10 +48,7 @@ func (a *Api) CreateWallet() echo.HandlerFunc {
 			return err
 		}
 
-		user, err := a.repo.GetUser()
-		if err != nil {
-			return fmt.Errorf("failed to get user: %w", err)
-		}
+		user := c.Get("user").(models.User)
 
 		if user.Wallets.Exists(in.Name) {
 			return echo.NewHTTPError(http.StatusBadRequest, "A wallet with this name already exists")
@@ -69,7 +63,7 @@ func (a *Api) CreateWallet() echo.HandlerFunc {
 
 		err = a.repo.UpsertUser(user)
 		if err != nil {
-			return fmt.Errorf("failed to update user: %w", err)
+			return err
 		}
 
 		return c.NoContent(http.StatusCreated)

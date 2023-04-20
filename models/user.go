@@ -9,6 +9,7 @@ import (
 type User struct {
 	WebauthnData WebauthnData `json:"webauthn_data"`
 	Wallets      Wallets      `json:"wallets"`
+	OTP          OTP          `json:"otp,omitempty"`
 	Email        string       `json:"email"`
 }
 

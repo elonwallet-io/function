@@ -24,8 +24,8 @@ func (s *Server) registerRoutes() error {
 	s.echo.POST("/transaction/finalize", api.TransactionFinalize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
 	s.echo.GET("/fees", api.EstimateFees(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
 
-	s.echo.GET("/credentials/initialize", api.CreateCredentialInitialize(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey))
-	s.echo.POST("/credentials/finalize", api.CreateCredentialFinalize(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey))
+	s.echo.GET("/credentials/initialize", api.CreateCredentialInitialize(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey, "create-credential"))
+	s.echo.POST("/credentials/finalize", api.CreateCredentialFinalize(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey, "create-credential"))
 	s.echo.DELETE("/credentials/:name", api.RemoveCredential(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey))
 	s.echo.GET("/credentials", api.GetCredentials(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey))
 
@@ -35,6 +35,10 @@ func (s *Server) registerRoutes() error {
 	s.echo.GET("/networks", api.GetNetworks(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
 
 	s.echo.GET("/jwt-verification-key", api.HandleGetJWTVerificationKey())
+
+	s.echo.POST("/otp", api.CreateOTP(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey))
+	s.echo.GET("/otp", api.GetOTP(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey))
+	s.echo.POST("/otp/login", api.LoginWithOTP())
 
 	return nil
 }

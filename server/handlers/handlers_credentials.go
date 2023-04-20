@@ -1,7 +1,7 @@
 package handlers
 
 import (
-	"fmt"
+	"github.com/Leantar/elonwallet-function/models"
 	"github.com/Leantar/elonwallet-function/server/common"
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/labstack/echo/v4"
@@ -10,10 +10,7 @@ import (
 
 func (a *Api) CreateCredentialInitialize() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := a.repo.GetUser()
-		if err != nil {
-			return fmt.Errorf("failed to get user: %w", err)
-		}
+		user := c.Get("user").(models.User)
 
 		registrationOptions := common.GetCreationOptions(user.WebauthnData.CredentialExcludeList())
 
@@ -25,7 +22,7 @@ func (a *Api) CreateCredentialInitialize() echo.HandlerFunc {
 		user.WebauthnData.Sessions[AddCredentialKey] = *session
 		err = a.repo.UpsertUser(user)
 		if err != nil {
-			return fmt.Errorf("failed to update user: %w", err)
+			return err
 		}
 
 		return c.JSON(http.StatusOK, options)
@@ -46,10 +43,7 @@ func (a *Api) CreateCredentialFinalize() echo.HandlerFunc {
 			return err
 		}
 
-		user, err := a.repo.GetUser()
-		if err != nil {
-			return fmt.Errorf("failed to get user: %w", err)
-		}
+		user := c.Get("user").(models.User)
 
 		_, ok := user.WebauthnData.Credentials[in.CredentialName]
 		if ok {
@@ -75,7 +69,7 @@ func (a *Api) CreateCredentialFinalize() echo.HandlerFunc {
 		user.WebauthnData.Credentials[in.CredentialName] = *cred
 		err = a.repo.UpsertUser(user)
 		if err != nil {
-			return fmt.Errorf("failed to update user: %w", err)
+			return err
 		}
 
 		return c.NoContent(http.StatusOK)
@@ -96,11 +90,7 @@ func (a *Api) RemoveCredential() echo.HandlerFunc {
 		}
 
 		claims := c.Get("claims").(common.EnclaveClaims)
-
-		user, err := a.repo.GetUser()
-		if err != nil {
-			return fmt.Errorf("failed to get user: %w", err)
-		}
+		user := c.Get("user").(models.User)
 
 		_, ok := user.WebauthnData.Credentials[in.CredentialName]
 		if !ok {
@@ -112,9 +102,9 @@ func (a *Api) RemoveCredential() echo.HandlerFunc {
 		}
 		delete(user.WebauthnData.Credentials, in.CredentialName)
 
-		err = a.repo.UpsertUser(user)
+		err := a.repo.UpsertUser(user)
 		if err != nil {
-			return fmt.Errorf("failed to update user: %w", err)
+			return err
 		}
 
 		return c.NoContent(http.StatusOK)
@@ -131,11 +121,7 @@ func (a *Api) GetCredentials() echo.HandlerFunc {
 	}
 	return func(c echo.Context) error {
 		claims := c.Get("claims").(common.EnclaveClaims)
-
-		user, err := a.repo.GetUser()
-		if err != nil {
-			return fmt.Errorf("failed to get user: %w", err)
-		}
+		user := c.Get("user").(models.User)
 
 		credentials := make([]credential, len(user.WebauthnData.Credentials))
 		i := 0

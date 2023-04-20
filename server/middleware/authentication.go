@@ -2,24 +2,30 @@ package middleware
 
 import (
 	"crypto/ed25519"
-	"fmt"
 	"github.com/Leantar/elonwallet-function/server/common"
 	"github.com/labstack/echo/v4"
+	"golang.org/x/exp/slices"
 	"net/http"
 	"time"
 )
 
-func CheckAuthentication(repo common.Repository, pk ed25519.PublicKey) echo.MiddlewareFunc {
+const invalidSession = "Invalid or malformed jwt"
+
+func CheckAuthentication(repo common.Repository, pk ed25519.PublicKey, additionalScopes ...string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			user, err := repo.GetUser()
 			if err != nil {
-				return fmt.Errorf("failed to get user: %w", err)
+				return err
 			}
 
 			claims, err := checkJWT(c, user.Email, pk)
 			if err != nil {
 				return err
+			}
+
+			if !isAllowedScope(additionalScopes, claims) {
+				return echo.NewHTTPError(http.StatusUnauthorized, invalidSession)
 			}
 
 			c.Set("claims", claims)
@@ -30,12 +36,12 @@ func CheckAuthentication(repo common.Repository, pk ed25519.PublicKey) echo.Midd
 	}
 }
 
-func CheckStrictAuthentication(repo common.Repository, pk ed25519.PublicKey) echo.MiddlewareFunc {
+func CheckStrictAuthentication(repo common.Repository, pk ed25519.PublicKey, additionalScopes ...string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			user, err := repo.GetUser()
 			if err != nil {
-				return fmt.Errorf("failed to get user: %w", err)
+				return err
 			}
 
 			claims, err := checkJWT(c, user.Email, pk)
@@ -45,12 +51,15 @@ func CheckStrictAuthentication(repo common.Repository, pk ed25519.PublicKey) ech
 
 			iat, err := claims.GetIssuedAt()
 			if err != nil {
-				return echo.NewHTTPError(http.StatusUnauthorized, "Invalid session cookie")
+				return echo.NewHTTPError(http.StatusUnauthorized, invalidSession)
 			}
 
-			// Check if the session is older than 15 minutes
-			if iat.Add(time.Minute * 15).Before(time.Now()) {
+			if time.Now().After(iat.Add(time.Minute * 15)) {
 				return echo.NewHTTPError(http.StatusForbidden, "This session is too old to access this resource")
+			}
+
+			if !isAllowedScope(additionalScopes, claims) {
+				return echo.NewHTTPError(http.StatusUnauthorized, invalidSession)
 			}
 
 			c.Set("claims", claims)
@@ -69,8 +78,12 @@ func checkJWT(c echo.Context, email string, pk ed25519.PublicKey) (common.Enclav
 
 	claims, err := common.ValidateEnclaveJWT(cookie.Value, email, pk)
 	if err != nil {
-		return common.EnclaveClaims{}, echo.NewHTTPError(http.StatusUnauthorized, "Invalid session cookie").SetInternal(err)
+		return common.EnclaveClaims{}, echo.NewHTTPError(http.StatusUnauthorized, invalidSession).SetInternal(err)
 	}
 
 	return claims, nil
+}
+
+func isAllowedScope(scopes []string, claims common.EnclaveClaims) bool {
+	return claims.Scope == "all" || slices.Contains(scopes, claims.Scope)
 }
