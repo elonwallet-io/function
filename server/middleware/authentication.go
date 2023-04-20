@@ -2,19 +2,21 @@ package middleware
 
 import (
 	"crypto/ed25519"
-	"fmt"
 	"github.com/Leantar/elonwallet-function/server/common"
 	"github.com/labstack/echo/v4"
+	"golang.org/x/exp/slices"
 	"net/http"
 	"time"
 )
+
+const invalidSession = "Invalid or malformed jwt"
 
 func CheckAuthentication(repo common.Repository, pk ed25519.PublicKey, additionalScopes ...string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			user, err := repo.GetUser()
 			if err != nil {
-				return fmt.Errorf("failed to get user: %w", err)
+				return err
 			}
 
 			claims, err := checkJWT(c, user.Email, pk)
@@ -22,8 +24,8 @@ func CheckAuthentication(repo common.Repository, pk ed25519.PublicKey, additiona
 				return err
 			}
 
-			if len(additionalScopes) > 0 && !checkScopes(additionalScopes, claims) {
-				return echo.NewHTTPError(http.StatusUnauthorized, "Invalid or malformed session")
+			if !isAllowedScope(additionalScopes, claims) {
+				return echo.NewHTTPError(http.StatusUnauthorized, invalidSession)
 			}
 
 			c.Set("claims", claims)
@@ -39,7 +41,7 @@ func CheckStrictAuthentication(repo common.Repository, pk ed25519.PublicKey, add
 		return func(c echo.Context) error {
 			user, err := repo.GetUser()
 			if err != nil {
-				return fmt.Errorf("failed to get user: %w", err)
+				return err
 			}
 
 			claims, err := checkJWT(c, user.Email, pk)
@@ -49,15 +51,15 @@ func CheckStrictAuthentication(repo common.Repository, pk ed25519.PublicKey, add
 
 			iat, err := claims.GetIssuedAt()
 			if err != nil {
-				return echo.NewHTTPError(http.StatusUnauthorized, "Invalid session cookie")
+				return echo.NewHTTPError(http.StatusUnauthorized, invalidSession)
 			}
 
 			if time.Now().After(iat.Add(time.Minute * 15)) {
 				return echo.NewHTTPError(http.StatusForbidden, "This session is too old to access this resource")
 			}
 
-			if len(additionalScopes) > 0 && !checkScopes(additionalScopes, claims) {
-				return echo.NewHTTPError(http.StatusUnauthorized, "Invalid or malformed session")
+			if !isAllowedScope(additionalScopes, claims) {
+				return echo.NewHTTPError(http.StatusUnauthorized, invalidSession)
 			}
 
 			c.Set("claims", claims)
@@ -76,18 +78,12 @@ func checkJWT(c echo.Context, email string, pk ed25519.PublicKey) (common.Enclav
 
 	claims, err := common.ValidateEnclaveJWT(cookie.Value, email, pk)
 	if err != nil {
-		return common.EnclaveClaims{}, echo.NewHTTPError(http.StatusUnauthorized, "Invalid or malformed session").SetInternal(err)
+		return common.EnclaveClaims{}, echo.NewHTTPError(http.StatusUnauthorized, invalidSession).SetInternal(err)
 	}
 
 	return claims, nil
 }
 
-func checkScopes(scopes []string, claims common.EnclaveClaims) bool {
-	for _, scope := range scopes {
-		if scope == "all" || claims.Scope == scope {
-			return true
-		}
-	}
-
-	return false
+func isAllowedScope(scopes []string, claims common.EnclaveClaims) bool {
+	return claims.Scope == "all" || slices.Contains(scopes, claims.Scope)
 }

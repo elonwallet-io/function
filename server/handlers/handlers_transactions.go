@@ -27,10 +27,7 @@ type transactionData struct {
 
 func (a *Api) TransactionInitialize() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user, err := a.repo.GetUser()
-		if err != nil {
-			return fmt.Errorf("failed to get user: %w", err)
-		}
+		user := c.Get("user").(models.User)
 
 		options, session, err := a.w.BeginLogin(user.WebauthnData)
 		if err != nil {
@@ -69,10 +66,7 @@ func (a *Api) TransactionFinalize() echo.HandlerFunc {
 			return err
 		}
 
-		user, err := a.repo.GetUser()
-		if err != nil {
-			return fmt.Errorf("failed to get user: %w", err)
-		}
+		user := c.Get("user").(models.User)
 
 		session, ok := user.WebauthnData.Sessions[TransactionKey]
 		if !ok {
@@ -121,7 +115,7 @@ func (a *Api) TransactionFinalize() echo.HandlerFunc {
 
 		err = a.repo.UpsertUser(user)
 		if err != nil {
-			return fmt.Errorf("failed to update user: %w", err)
+			return err
 		}
 
 		return c.NoContent(http.StatusOK)

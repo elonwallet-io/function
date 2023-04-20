@@ -21,30 +21,50 @@ func NewJsonFile() *JsonFile {
 	}
 }
 
-func (j *JsonFile) GetUser() (user models.User, err error) {
+func (j *JsonFile) GetUser() (models.User, error) {
 	path := fmt.Sprintf("%s/user_data.json", j.rootPath)
 
-	err = j.loadData(path, &user)
-	return
+	var user models.User
+	err := j.loadData(path, &user)
+	if err != nil {
+		return models.User{}, fmt.Errorf("failed to get user data: %w", err)
+	}
+
+	return user, nil
 }
 
 func (j *JsonFile) UpsertUser(user models.User) error {
 	path := fmt.Sprintf("%s/user_data.json", j.rootPath)
 
-	return j.saveData(path, &user)
+	err := j.saveData(path, &user)
+	if err != nil {
+		return fmt.Errorf("failed to update user data: %w", err)
+	}
+
+	return nil
 }
 
 func (j *JsonFile) SaveSigningKey(signingKey models.SigningKey) error {
 	path := fmt.Sprintf("%s/signing_key.json", j.rootPath)
 
-	return j.saveData(path, &signingKey)
+	err := j.saveData(path, &signingKey)
+	if err != nil {
+		return fmt.Errorf("failed to save signing key: %w", err)
+	}
+
+	return nil
 }
 
-func (j *JsonFile) GetSigningKey() (signingKey models.SigningKey, err error) {
+func (j *JsonFile) GetSigningKey() (models.SigningKey, error) {
 	path := fmt.Sprintf("%s/signing_key.json", j.rootPath)
 
-	err = j.loadData(path, &signingKey)
-	return
+	var signingKey models.SigningKey
+	err := j.loadData(path, &signingKey)
+	if err != nil {
+		return models.SigningKey{}, fmt.Errorf("failed to get signing key: %w", err)
+	}
+
+	return signingKey, nil
 }
 
 func (j *JsonFile) loadData(path string, output any) error {

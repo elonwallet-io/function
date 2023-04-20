@@ -72,10 +72,10 @@ func getSigningKey(repo *repository.JsonFile) (models.SigningKey, error) {
 		//Store the key for the next time we need to fetch it after restart
 		err = repo.SaveSigningKey(signingKey)
 		if err != nil {
-			return models.SigningKey{}, fmt.Errorf("failed to save new signing key: %w", err)
+			return models.SigningKey{}, err
 		}
 	} else if err != nil {
-		return models.SigningKey{}, fmt.Errorf("failed to get signing key: %w", err)
+		return models.SigningKey{}, err
 	}
 
 	return signingKey, nil
