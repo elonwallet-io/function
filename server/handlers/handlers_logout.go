@@ -14,7 +14,7 @@ func (a *Api) Logout() echo.HandlerFunc {
 			Expires:  time.Unix(0, 0),
 			HttpOnly: true,
 			Secure:   true,
-			SameSite: http.SameSiteLaxMode,
+			SameSite: http.SameSiteStrictMode,
 			Path:     "/",
 		})
 		return c.NoContent(http.StatusOK)
