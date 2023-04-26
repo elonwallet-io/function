@@ -15,38 +15,23 @@ import (
 
 const invalidOTP = "The OTP provided is invalid or expired. Try creating a new OTP."
 
-func (a *Api) CreateOTP() echo.HandlerFunc {
+func (a *Api) GetOrCreateOTP() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		user := c.Get("user").(models.User)
 
-		otp, err := generateOTP()
-		if err != nil {
-			return fmt.Errorf("failed to generate otp: %w", err)
-		}
+		if isExpiredOrInvalidOTP(user.OTP) {
+			otp, err := generateOTP()
+			if err != nil {
+				return fmt.Errorf("failed to generate otp: %w", err)
+			}
+			user.OTP = models.OTP{
+				Secret:     otp,
+				ValidUntil: time.Now().Add(time.Minute * 30).Unix(),
+				TimesTried: 0,
+				Active:     true,
+			}
 
-		user.OTP = models.OTP{
-			Secret:     otp,
-			ValidUntil: time.Now().Add(time.Minute * 30).Unix(),
-			TimesTried: 0,
-			Active:     true,
-		}
-
-		err = a.repo.UpsertUser(user)
-		if err != nil {
-			return err
-		}
-
-		return c.NoContent(http.StatusCreated)
-	}
-}
-
-func (a *Api) GetOTP() echo.HandlerFunc {
-	return func(c echo.Context) error {
-		user := c.Get("user").(models.User)
-
-		if time.Now().After(time.Unix(user.OTP.ValidUntil, 0)) || user.OTP.TimesTried > 2 {
-			user.OTP.Active = false
-			err := a.repo.UpsertUser(user)
+			err = a.repo.UpsertUser(user)
 			if err != nil {
 				return err
 			}
@@ -147,4 +132,8 @@ func createOTPSessionCookie(user models.User, sk ed25519.PrivateKey) (*http.Cook
 		SameSite: http.SameSiteStrictMode,
 		Path:     "/",
 	}, nil
+}
+
+func isExpiredOrInvalidOTP(otp models.OTP) bool {
+	return !otp.Active || time.Now().After(time.Unix(otp.ValidUntil, 0)) || otp.TimesTried > 2
 }

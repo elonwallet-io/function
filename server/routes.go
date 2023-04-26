@@ -36,8 +36,7 @@ func (s *Server) registerRoutes() error {
 
 	s.echo.GET("/jwt-verification-key", api.HandleGetJWTVerificationKey())
 
-	s.echo.POST("/otp", api.CreateOTP(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey))
-	s.echo.GET("/otp", api.GetOTP(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey))
+	s.echo.GET("/otp", api.GetOrCreateOTP(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey))
 	s.echo.POST("/otp/login", api.LoginWithOTP())
 
 	return nil
