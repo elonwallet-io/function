@@ -39,5 +39,7 @@ func (s *Server) registerRoutes() error {
 	s.echo.GET("/otp", api.GetOrCreateOTP(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey))
 	s.echo.POST("/otp/login", api.LoginWithOTP())
 
+	s.echo.POST("/sign/personal", api.CreatePersonalSignature(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
+
 	return nil
 }
