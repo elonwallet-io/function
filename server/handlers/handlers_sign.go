@@ -9,6 +9,15 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
 	"net/http"
+	"regexp"
+)
+
+const (
+	isHexRegexString = "^(0[xX])?[0-9a-fA-F]+$"
+)
+
+var (
+	isHexRegex = regexp.MustCompile(isHexRegexString)
 )
 
 func (a *Api) CreatePersonalSignature() echo.HandlerFunc {
@@ -42,6 +51,16 @@ func (a *Api) CreatePersonalSignature() echo.HandlerFunc {
 			log.Fatal().Caller().Err(err).Msg("failed to convert hex to private key")
 		}
 
+		if isHexString(in.Message) {
+			fmt.Println("it is hex")
+			msgBytes, err := hexutil.Decode(in.Message)
+			if err != nil {
+				return fmt.Errorf("failed to decode hex message: %w", err)
+			}
+			in.Message = string(msgBytes)
+			fmt.Println(in.Message)
+		}
+
 		signature, err := signMessage(in.Message, privateKey)
 		if err != nil {
 			return err
@@ -63,4 +82,8 @@ func signMessage(message string, privateKey *ecdsa.PrivateKey) (string, error) {
 	// See https://stackoverflow.com/questions/69762108/implementing-ethereum-personal-sign-eip-191-from-go-ethereum-gives-different-s for more info
 	sig[64] += 27
 	return hexutil.Encode(sig), nil
+}
+
+func isHexString(message string) bool {
+	return isHexRegex.MatchString(message)
 }
