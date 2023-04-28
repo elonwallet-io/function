@@ -20,8 +20,6 @@ func (s *Server) registerRoutes() error {
 
 	s.echo.GET("/logout", api.Logout(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
 
-	s.echo.GET("/transaction/initialize", api.TransactionInitialize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
-	s.echo.POST("/transaction/finalize", api.TransactionFinalize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
 	s.echo.GET("/fees", api.EstimateFees(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
 
 	s.echo.GET("/credentials/initialize", api.CreateCredentialInitialize(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey, "create-credential"))
@@ -39,7 +37,12 @@ func (s *Server) registerRoutes() error {
 	s.echo.GET("/otp", api.GetOrCreateOTP(), customMiddleware.CheckStrictAuthentication(s.repo, s.key.PublicKey))
 	s.echo.POST("/otp/login", api.LoginWithOTP())
 
-	s.echo.POST("/sign/personal", api.CreatePersonalSignature(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
+	s.echo.POST("/message/sign", api.SignPersonal(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
+
+	s.echo.GET("/transaction/sign/initialize", api.SignTransactionInitialize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
+	s.echo.POST("/transaction/sign/finalize", api.SignTransactionFinalize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
+	s.echo.GET("/transaction/send/initialize", api.SendTransactionInitialize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
+	s.echo.POST("/transaction/send/finalize", api.SendTransactionFinalize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
 
 	return nil
 }

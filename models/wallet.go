@@ -52,6 +52,12 @@ func (w Wallets) Exists(name string) bool {
 	})
 }
 
+func (w Wallets) ExistsByAddress(address string) bool {
+	return slices.ContainsFunc(w, func(wallet Wallet) bool {
+		return wallet.Address == address
+	})
+}
+
 func (w Wallets) PublicWallets() []Wallet {
 	wallets := make([]Wallet, 0)
 	for _, wallet := range w {

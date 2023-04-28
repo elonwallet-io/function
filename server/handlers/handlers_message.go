@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"crypto/ecdsa"
 	"fmt"
 	"github.com/Leantar/elonwallet-function/models"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -20,10 +19,9 @@ var (
 	isHexRegex = regexp.MustCompile(isHexRegexString)
 )
 
-func (a *Api) CreatePersonalSignature() echo.HandlerFunc {
+func (a *Api) SignPersonal() echo.HandlerFunc {
 	type input struct {
 		Message string `json:"message" validate:"required"`
-		Chain   string `json:"chain" validate:"required,hexadecimal"`
 		From    string `json:"from" validate:"required,eth_addr"`
 	}
 
@@ -52,13 +50,11 @@ func (a *Api) CreatePersonalSignature() echo.HandlerFunc {
 		}
 
 		if isHexString(in.Message) {
-			fmt.Println("it is hex")
 			msgBytes, err := hexutil.Decode(in.Message)
 			if err != nil {
 				return fmt.Errorf("failed to decode hex message: %w", err)
 			}
 			in.Message = string(msgBytes)
-			fmt.Println(in.Message)
 		}
 
 		signature, err := signMessage(in.Message, privateKey)
@@ -69,19 +65,6 @@ func (a *Api) CreatePersonalSignature() echo.HandlerFunc {
 		return c.JSON(http.StatusOK, output{signature})
 
 	}
-}
-
-func signMessage(message string, privateKey *ecdsa.PrivateKey) (string, error) {
-	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(message), message)
-	digest := crypto.Keccak256Hash([]byte(msg))
-	sig, err := crypto.Sign(digest.Bytes(), privateKey)
-	if err != nil {
-		return "", fmt.Errorf("failed to sign message: %w", err)
-	}
-	// Last byte from go signature is the recovery id instead of v. It needs to be overridden
-	// See https://stackoverflow.com/questions/69762108/implementing-ethereum-personal-sign-eip-191-from-go-ethereum-gives-different-s for more info
-	sig[64] += 27
-	return hexutil.Encode(sig), nil
 }
 
 func isHexString(message string) bool {

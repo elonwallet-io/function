@@ -12,7 +12,7 @@ func (a *Api) CreateCredentialInitialize() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		user := c.Get("user").(models.User)
 
-		registrationOptions := common.GetCreationOptions(user.WebauthnData.CredentialExcludeList())
+		registrationOptions := getCreationOptions(user.WebauthnData.CredentialExcludeList())
 
 		options, session, err := a.w.BeginRegistration(user.WebauthnData, registrationOptions)
 		if err != nil {

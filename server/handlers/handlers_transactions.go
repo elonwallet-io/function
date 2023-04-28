@@ -1,62 +1,38 @@
 package handlers
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"github.com/Leantar/elonwallet-function/models"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/labstack/echo/v4"
-	"github.com/rs/zerolog/log"
-	"math/big"
 	"net/http"
 )
 
-var ErrInsufficientFunds = errors.New("insufficient funds for transaction")
-
-type transactionData struct {
-	wallet  models.Wallet
-	network models.Network
-	to      common.Address
-	amount  *big.Int
-}
-
-func (a *Api) TransactionInitialize() echo.HandlerFunc {
+func (a *Api) SendTransactionInitialize() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		user := c.Get("user").(models.User)
 
-		options, session, err := a.w.BeginLogin(user.WebauthnData)
+		options, err := a.loginInitialize(user, SendTransactionKey)
 		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-		}
-
-		user.WebauthnData.Sessions[TransactionKey] = *session
-
-		err = a.repo.UpsertUser(user)
-		if err != nil {
-			return fmt.Errorf("failed to update user: %w", err)
+			return err
 		}
 
 		return c.JSON(http.StatusOK, options)
 	}
 }
 
-func (a *Api) TransactionFinalize() echo.HandlerFunc {
-	type transactionInfo struct {
-		Chain  string `json:"chain" validate:"required,hexadecimal"`
-		From   string `json:"from" validate:"required,eth_addr"`
-		To     string `json:"to" validate:"required,eth_addr"`
-		Amount string `json:"amount" validate:"required,number"`
-	}
-
+func (a *Api) SendTransactionFinalize() echo.HandlerFunc {
 	type input struct {
 		AssertionResponse protocol.CredentialAssertionResponse `json:"assertion_response"`
-		TransactionInfo   transactionInfo                      `json:"transaction_info"`
+		TransactionParams transactionParams                    `json:"transaction_params"`
 	}
+
+	type output struct {
+		Hash string `json:"hash"`
+	}
+
 	return func(c echo.Context) error {
 		var in input
 		if err := c.Bind(&in); err != nil {
@@ -68,122 +44,96 @@ func (a *Api) TransactionFinalize() echo.HandlerFunc {
 
 		user := c.Get("user").(models.User)
 
-		session, ok := user.WebauthnData.Sessions[TransactionKey]
-		if !ok {
-			return echo.NewHTTPError(http.StatusBadRequest, "transaction must be initialized beforehand")
-		}
-		delete(user.WebauthnData.Sessions, TransactionKey)
-
-		car, err := in.AssertionResponse.Parse()
-		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-		}
-
-		_, err = a.w.ValidateLogin(user.WebauthnData, session, car)
-		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-		}
-
-		wallet, ok := user.Wallets.FindByAddress(in.TransactionInfo.From)
-		if !ok {
-			return echo.NewHTTPError(http.StatusBadRequest, "sending wallet does not exist")
-		}
-
-		network, ok := networks.FindByChain(in.TransactionInfo.Chain)
-		if !ok {
-			return echo.NewHTTPError(http.StatusBadRequest, "network does not exist")
-		}
-
-		amount, ok := new(big.Int).SetString(in.TransactionInfo.Amount, 10)
-		if !ok {
-			return echo.NewHTTPError(http.StatusBadRequest, "amount is not a valid number")
-		}
-
-		td := transactionData{
-			wallet:  wallet,
-			network: network,
-			to:      common.HexToAddress(in.TransactionInfo.To),
-			amount:  amount,
-		}
-
-		if err := sendNativeTransaction(td, c.Request().Context()); err != nil {
-			if err == ErrInsufficientFunds {
-				return echo.NewHTTPError(http.StatusBadRequest, "You have insufficient funds for this transaction")
-			}
-			return fmt.Errorf("failed to send transaction: %w", err)
-		}
-
-		err = a.repo.UpsertUser(user)
+		_, err := a.loginFinalize(user, SendTransactionKey, in.AssertionResponse)
 		if err != nil {
 			return err
 		}
 
-		return c.NoContent(http.StatusOK)
+		network, ok := networks.FindByChain(in.TransactionParams.Chain)
+		if !ok {
+			return echo.NewHTTPError(http.StatusBadRequest, "network does not exist")
+		}
+
+		client, err := ethclient.DialContext(c.Request().Context(), network.RPC)
+		if err != nil {
+			return fmt.Errorf("failed to dial rpc: %w", err)
+		}
+
+		signedTx, err := createSignedTransaction(user, in.TransactionParams, network, client, c.Request().Context())
+		if err != nil {
+			return err
+		}
+
+		err = client.SendTransaction(c.Request().Context(), signedTx)
+		if err != nil {
+			return fmt.Errorf("failed to send tx: %w", err)
+		}
+
+		return c.JSON(http.StatusOK, output{signedTx.Hash().Hex()})
 	}
 }
 
-func sendNativeTransaction(data transactionData, ctx context.Context) error {
-	privateKey, err := crypto.HexToECDSA(data.wallet.PrivateKeyHex)
-	if err != nil {
-		log.Fatal().Caller().Err(err).Msg("failed to convert hex to private key")
+func (a *Api) SignTransactionInitialize() echo.HandlerFunc {
+	return func(c echo.Context) error {
+		user := c.Get("user").(models.User)
+
+		options, err := a.loginInitialize(user, SignTransactionKey)
+		if err != nil {
+			return err
+		}
+
+		return c.JSON(http.StatusOK, options)
+	}
+}
+
+func (a *Api) SignTransactionFinalize() echo.HandlerFunc {
+	type input struct {
+		AssertionResponse protocol.CredentialAssertionResponse `json:"assertion_response"`
+		TransactionParams transactionParams                    `json:"transaction_params"`
 	}
 
-	client, err := ethclient.DialContext(ctx, data.network.RPC)
-	if err != nil {
-		return fmt.Errorf("failed to dial rpc: %w", err)
+	type output struct {
+		Transaction string `json:"transaction"`
 	}
 
-	fromAddress := common.HexToAddress(data.wallet.Address)
+	return func(c echo.Context) error {
+		var in input
+		if err := c.Bind(&in); err != nil {
+			return err
+		}
+		if err := c.Validate(&in); err != nil {
+			return err
+		}
 
-	nonce, err := client.PendingNonceAt(ctx, fromAddress)
-	if err != nil {
-		return fmt.Errorf("failed to get nonce: %w", err)
+		user := c.Get("user").(models.User)
+
+		_, err := a.loginFinalize(user, SignTransactionKey, in.AssertionResponse)
+		if err != nil {
+			return err
+		}
+
+		network, ok := networks.FindByChain(in.TransactionParams.Chain)
+		if !ok {
+			return echo.NewHTTPError(http.StatusBadRequest, "network does not exist")
+		}
+
+		client, err := ethclient.DialContext(c.Request().Context(), network.RPC)
+		if err != nil {
+			return fmt.Errorf("failed to dial rpc: %w", err)
+		}
+
+		signedTx, err := createSignedTransaction(user, in.TransactionParams, network, client, c.Request().Context())
+		if err != nil {
+			return err
+		}
+
+		txBytes, err := signedTx.MarshalBinary()
+		if err != nil {
+			return fmt.Errorf("failed to marshal signed tx")
+		}
+
+		txHex := common.Bytes2Hex(txBytes)
+
+		return c.JSON(http.StatusOK, output{txHex})
 	}
-
-	feeCap, err := client.SuggestGasPrice(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to suggest fee cap: %w", err)
-	}
-
-	//Check balance to prevent error later
-	balance, err := client.BalanceAt(ctx, fromAddress, nil)
-	if err != nil {
-		return fmt.Errorf("failed to get current balance: %w", err)
-	}
-
-	//Check if user has enough balance
-	if balance.Cmp(new(big.Int).Add(data.amount, feeCap)) == -1 {
-		return ErrInsufficientFunds
-	}
-
-	tip, err := client.SuggestGasTipCap(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to suggest tip cap: %w", err)
-	}
-
-	chainID := new(big.Int).SetInt64(data.network.Chain)
-
-	tx := types.NewTx(&types.DynamicFeeTx{
-		ChainID:   chainID,
-		Nonce:     nonce,
-		GasFeeCap: feeCap,
-		GasTipCap: tip,
-		Gas:       21000,
-		To:        &data.to,
-		Value:     data.amount,
-		Data:      make([]byte, 0),
-	})
-
-	signedTx, err := types.SignTx(tx, types.LatestSignerForChainID(chainID), privateKey)
-	if err != nil {
-		return fmt.Errorf("failed to sign tx: %w", err)
-	}
-
-	err = client.SendTransaction(ctx, signedTx)
-	if err != nil {
-		return fmt.Errorf("failed to send tx: %w", err)
-	}
-
-	log.Info().Caller().Msgf("sending transaction with hash: %s", signedTx.Hash().Hex())
-	return nil
 }
