@@ -24,7 +24,7 @@ type transactionParams struct {
 	Chain    string `json:"chain" validate:"required,hexadecimal"`
 	From     string `json:"from" validate:"required,eth_addr"`
 	To       string `json:"to" validate:"required,eth_addr"`
-	Data     string `json:"data" validate:"omitempty,hexadecimal"` //has currently no effect, because we only support the main chain
+	Data     string `json:"data"`
 	Gas      string `json:"gas" validate:"omitempty,number"`       //optional as per WalletConnect definition
 	GasPrice string `json:"gas_price" validate:"omitempty,number"` //optional as per WalletConnect definition
 	Value    string `json:"value" validate:"omitempty,number"`     //optional as per WalletConnect definition
@@ -68,7 +68,7 @@ func createTransaction(params transactionParams, network models.Network, client 
 		Gas:       gas,
 		To:        &to,
 		Value:     value,
-		Data:      make([]byte, 0),
+		Data:      []byte(params.Data),
 	})
 
 	return tx, nil
@@ -90,7 +90,7 @@ func parseValue(value string) (*big.Int, error) {
 }
 
 func parseNonce(nonce string, from common.Address, client *ethclient.Client, ctx context.Context) (parsed uint64, err error) {
-	if nonce != "" {
+	if nonce != "" && nonce != "0" {
 		parsed, err = strconv.ParseUint(nonce, 10, 64)
 		if err != nil {
 			return 0, echo.NewHTTPError(http.StatusBadRequest, "invalid nonce value").SetInternal(err)

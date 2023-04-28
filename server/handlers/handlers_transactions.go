@@ -3,7 +3,7 @@ package handlers
 import (
 	"fmt"
 	"github.com/Leantar/elonwallet-function/models"
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/labstack/echo/v4"
@@ -132,8 +132,6 @@ func (a *Api) SignTransactionFinalize() echo.HandlerFunc {
 			return fmt.Errorf("failed to marshal signed tx")
 		}
 
-		txHex := common.Bytes2Hex(txBytes)
-
-		return c.JSON(http.StatusOK, output{txHex})
+		return c.JSON(http.StatusOK, output{hexutil.Encode(txBytes)})
 	}
 }
