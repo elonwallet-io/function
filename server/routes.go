@@ -38,6 +38,7 @@ func (s *Server) registerRoutes() error {
 	s.echo.POST("/otp/login", api.LoginWithOTP())
 
 	s.echo.POST("/message/sign", api.SignPersonal(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
+	s.echo.POST("/typed-data/sign", api.SignTypedData(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
 
 	s.echo.GET("/transaction/sign/initialize", api.SignTransactionInitialize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))
 	s.echo.POST("/transaction/sign/finalize", api.SignTransactionFinalize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey))

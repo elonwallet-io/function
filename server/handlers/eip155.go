@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
 	"math/big"
@@ -151,10 +152,34 @@ func hasSufficientBalance(tx *types.Transaction, from common.Address, client *et
 	return true, nil
 }
 
-func signMessage(message string, privateKey *ecdsa.PrivateKey) (string, error) {
+// EIP191 https://eips.ethereum.org/EIPS/eip-191
+func signPersonal(message string, privateKey *ecdsa.PrivateKey) (string, error) {
 	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(message), message)
-	digest := crypto.Keccak256Hash([]byte(msg))
-	sig, err := crypto.Sign(digest.Bytes(), privateKey)
+	hash := crypto.Keccak256Hash([]byte(msg))
+
+	return signEncodedMessage(hash, privateKey)
+}
+
+// EIP712 https://eips.ethereum.org/EIPS/eip-712
+func signTypedData(data apitypes.TypedData, privateKey *ecdsa.PrivateKey) (string, error) {
+	domainSeparator, err := data.HashStruct("EIP712Domain", data.Domain.Map())
+	if err != nil {
+		return "", fmt.Errorf("failed to hash domainSeparator: %w", err)
+	}
+
+	message, err := data.HashStruct(data.PrimaryType, data.Message)
+	if err != nil {
+		return "common.Hash{}", fmt.Errorf("failed to hash message: %w", err)
+	}
+
+	msg := fmt.Sprintf("\x19\x01%s%s", string(domainSeparator), string(message))
+	hash := crypto.Keccak256Hash([]byte(msg))
+
+	return signEncodedMessage(hash, privateKey)
+}
+
+func signEncodedMessage(hash common.Hash, privateKey *ecdsa.PrivateKey) (string, error) {
+	sig, err := crypto.Sign(hash.Bytes(), privateKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to sign message: %w", err)
 	}
