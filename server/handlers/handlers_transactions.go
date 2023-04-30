@@ -48,8 +48,8 @@ func (a *Api) TransactionInitialize() echo.HandlerFunc {
 func (a *Api) TransactionFinalize() echo.HandlerFunc {
 	type transactionInfo struct {
 		Chain  string `json:"chain" validate:"required,hexadecimal"`
-		From   string `json:"from" validate:"required,eth_addr"`
-		To     string `json:"to" validate:"required,eth_addr"`
+		From   string `json:"from" validate:"required,ethereum_address"`
+		To     string `json:"to" validate:"required,ethereum_address"`
 		Amount string `json:"amount" validate:"required,number"`
 	}
 
