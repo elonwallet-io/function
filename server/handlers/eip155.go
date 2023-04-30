@@ -23,8 +23,8 @@ var errInsufficientFunds = errors.New("insufficient funds for transaction")
 
 type transactionParams struct {
 	Chain    string `json:"chain" validate:"required,hexadecimal"`
-	From     string `json:"from" validate:"required,eth_addr"`
-	To       string `json:"to" validate:"required,eth_addr"`
+	From     string `json:"from" validate:"required,ethereum_address"`
+	To       string `json:"to" validate:"required,ethereum_address"`
 	Data     string `json:"data"`
 	Gas      string `json:"gas" validate:"omitempty,number"`       //optional as per WalletConnect definition
 	GasPrice string `json:"gas_price" validate:"omitempty,number"` //optional as per WalletConnect definition

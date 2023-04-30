@@ -43,7 +43,7 @@ func (a *Api) GetOrCreateOTP() echo.HandlerFunc {
 
 func (a *Api) LoginWithOTP() echo.HandlerFunc {
 	type input struct {
-		OTP string `json:"otp" validate:"is-otp"`
+		OTP string `json:"otp" validate:"otp"`
 	}
 	return func(c echo.Context) error {
 		var in input
