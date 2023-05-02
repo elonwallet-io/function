@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/crypto"
 	"golang.org/x/exp/slices"
+	"strings"
 )
 
 type Wallet struct {
@@ -36,8 +37,9 @@ func NewWallet(name string, public bool) (Wallet, error) {
 type Wallets []Wallet
 
 func (w Wallets) FindByAddress(address string) (Wallet, bool) {
+	addr := strings.ToLower(address)
 	index := slices.IndexFunc(w, func(wallet Wallet) bool {
-		return wallet.Address == address
+		return strings.ToLower(wallet.Address) == addr
 	})
 	if index == -1 {
 		return Wallet{}, false
@@ -49,12 +51,6 @@ func (w Wallets) FindByAddress(address string) (Wallet, bool) {
 func (w Wallets) Exists(name string) bool {
 	return slices.ContainsFunc(w, func(wallet Wallet) bool {
 		return wallet.Name == name
-	})
-}
-
-func (w Wallets) ExistsByAddress(address string) bool {
-	return slices.ContainsFunc(w, func(wallet Wallet) bool {
-		return wallet.Address == address
 	})
 }
 
