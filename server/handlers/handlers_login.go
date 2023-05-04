@@ -19,13 +19,7 @@ func (a *Api) LoginInitialize() echo.HandlerFunc {
 			return err
 		}
 
-		options, session, err := a.w.BeginLogin(user.WebauthnData)
-		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
-		}
-
-		user.WebauthnData.Sessions[LoginKey] = *session
-		err = a.repo.UpsertUser(user)
+		options, err := a.loginInitialize(user, LoginKey)
 		if err != nil {
 			return err
 		}

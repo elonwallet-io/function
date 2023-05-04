@@ -10,10 +10,11 @@ import (
 )
 
 const (
-	RegistrationKey  = "registration"
-	LoginKey         = "login"
-	TransactionKey   = "transaction"
-	AddCredentialKey = "add_credential"
+	RegistrationKey    = "registration"
+	LoginKey           = "login"
+	SignTransactionKey = "sign_transaction"
+	SendTransactionKey = "send_transaction"
+	AddCredentialKey   = "add_credential"
 )
 
 type Api struct {

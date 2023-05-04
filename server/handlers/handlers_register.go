@@ -31,7 +31,7 @@ func (a *Api) RegisterInitialize() echo.HandlerFunc {
 		}
 
 		user = models.NewUser(in.Email, in.Email)
-		registrationOptions := common.GetCreationOptions(nil)
+		registrationOptions := getCreationOptions(nil)
 
 		options, session, err := a.w.BeginRegistration(user.WebauthnData, registrationOptions)
 		if err != nil {
