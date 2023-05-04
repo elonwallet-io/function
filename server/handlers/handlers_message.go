@@ -1,23 +1,12 @@
 package handlers
 
 import (
-	"fmt"
 	"github.com/Leantar/elonwallet-function/models"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
 	"net/http"
-	"regexp"
-)
-
-const (
-	isHexRegexString = "^(0[xX])?[0-9a-fA-F]+$"
-)
-
-var (
-	isHexRegex = regexp.MustCompile(isHexRegexString)
 )
 
 func (a *Api) SignPersonal() echo.HandlerFunc {
@@ -48,14 +37,6 @@ func (a *Api) SignPersonal() echo.HandlerFunc {
 		privateKey, err := crypto.HexToECDSA(wallet.PrivateKeyHex)
 		if err != nil {
 			log.Fatal().Caller().Err(err).Msg("failed to convert hex to private key")
-		}
-
-		if isHexString(in.Message) {
-			msgBytes, err := hexutil.Decode(in.Message)
-			if err != nil {
-				return fmt.Errorf("failed to decode hex message: %w", err)
-			}
-			in.Message = string(msgBytes)
 		}
 
 		signature, err := signPersonal(in.Message, privateKey)
@@ -105,8 +86,4 @@ func (a *Api) SignTypedData() echo.HandlerFunc {
 
 		return c.JSON(http.StatusOK, output{signature})
 	}
-}
-
-func isHexString(message string) bool {
-	return isHexRegex.MatchString(message)
 }
