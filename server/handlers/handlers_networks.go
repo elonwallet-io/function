@@ -10,73 +10,91 @@ import (
 var networks = models.Networks{
 	{
 		Name:          "Ethereum Mainnet",
-		Chain:         1,
-		BlockExplorer: "https://etherscan.io/tx/",
+		ChainID:       1,
+		ChainIDHex:    fmt.Sprintf("0x%x", 1),
+		BlockExplorer: "https://etherscan.io/",
 		Currency:      "ETH",
 		RPC:           "https://mainnet.infura.io/v3/a208d80edc8b44ea8b16e45171988562",
 		Decimals:      18,
+		Testnet:       false,
 	},
 	{
 		Name:          "Goerli Testnet",
-		Chain:         5,
-		BlockExplorer: "https://goerli.etherscan.io/tx/",
+		ChainID:       5,
+		ChainIDHex:    fmt.Sprintf("0x%x", 5),
+		BlockExplorer: "https://goerli.etherscan.io/",
 		Currency:      "ETH",
 		RPC:           "https://goerli.infura.io/v3/a208d80edc8b44ea8b16e45171988562",
 		Decimals:      18,
+		Testnet:       true,
 	},
 	{
 		Name:          "Sepolia Testnet",
-		Chain:         11155111,
-		BlockExplorer: "https://sepolia.etherscan.io/tx/",
+		ChainID:       11155111,
+		ChainIDHex:    fmt.Sprintf("0x%x", 11155111),
+		BlockExplorer: "https://sepolia.etherscan.io/",
 		Currency:      "ETH",
 		RPC:           "https://sepolia.infura.io/v3/a208d80edc8b44ea8b16e45171988562",
 		Decimals:      18,
+		Testnet:       true,
 	},
 	{
 		Name:          "Polygon Mainnet",
-		Chain:         137,
-		BlockExplorer: "https://polygonscan.com//tx/",
+		ChainID:       137,
+		ChainIDHex:    fmt.Sprintf("0x%x", 137),
+		BlockExplorer: "https://polygonscan.com/",
 		Currency:      "MATIC",
 		RPC:           "https://polygon-rpc.com/",
 		Decimals:      18,
+		Testnet:       false,
 	},
 	{
 		Name:          "Mumbai Testnet",
-		Chain:         80001,
-		BlockExplorer: "https://mumbai.polygonscan.com/tx/",
+		ChainID:       80001,
+		ChainIDHex:    fmt.Sprintf("0x%x", 80001),
+		BlockExplorer: "https://mumbai.polygonscan.com/",
 		Currency:      "MATIC",
 		RPC:           "https://rpc-mumbai.maticvigil.com/",
 		Decimals:      18,
+		Testnet:       true,
+	},
+	{
+		Name:          "Avalanche C-Chain",
+		ChainID:       43114,
+		ChainIDHex:    fmt.Sprintf("0x%x", 43114),
+		BlockExplorer: "https://snowtrace.io/",
+		Currency:      "AVAX",
+		RPC:           "https://api.avax.network/ext/bc/C/rpc",
+		Decimals:      18,
+		Testnet:       false,
+	},
+	{
+		Name:          "Fantom Opera",
+		ChainID:       250,
+		ChainIDHex:    fmt.Sprintf("0x%x", 250),
+		BlockExplorer: "https://ftmscan.com/",
+		Currency:      "FTM",
+		RPC:           "https://rpc2.fantom.network",
+		Decimals:      18,
+		Testnet:       false,
+	},
+	{
+		Name:          "Arbitrum One",
+		ChainID:       42161,
+		ChainIDHex:    fmt.Sprintf("0x%x", 42161),
+		BlockExplorer: "https://arbiscan.io/",
+		Currency:      "ETH",
+		RPC:           "https://arb1.arbitrum.io/rpc",
+		Decimals:      18,
+		Testnet:       false,
 	},
 }
 
 func (a *Api) GetNetworks() echo.HandlerFunc {
-	type networkWithChainHex struct {
-		Name          string `json:"name"`
-		Chain         string `json:"chain"`
-		BlockExplorer string `json:"block_explorer"`
-		Currency      string `json:"currency"`
-		Decimals      int64  `json:"decimals"`
-	}
 	type output struct {
-		Networks []networkWithChainHex `json:"networks"`
+		Networks []models.Network `json:"networks"`
 	}
 	return func(c echo.Context) error {
-		out := output{
-			Networks: make([]networkWithChainHex, len(networks)),
-		}
-		i := 0
-		for _, nw := range networks {
-			out.Networks[i] = networkWithChainHex{
-				Name:          nw.Name,
-				Chain:         fmt.Sprintf("0x%x", nw.Chain),
-				BlockExplorer: nw.BlockExplorer,
-				Currency:      nw.Currency,
-				Decimals:      nw.Decimals,
-			}
-			i++
-		}
-
-		return c.JSON(http.StatusOK, out)
+		return c.JSON(http.StatusOK, output{networks})
 	}
 }
