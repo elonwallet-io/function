@@ -11,6 +11,7 @@ type User struct {
 	Wallets      Wallets      `json:"wallets"`
 	OTP          OTP          `json:"otp,omitempty"`
 	Email        string       `json:"email"`
+	Networks     []Network    `json:"networks"`
 }
 
 func NewUser(email string, displayName string) User {

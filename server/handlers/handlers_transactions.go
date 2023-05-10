@@ -49,7 +49,7 @@ func (a *Api) SendTransactionFinalize() echo.HandlerFunc {
 			return err
 		}
 
-		network, ok := networks.FindByChain(in.TransactionParams.Chain)
+		network, ok := networks.FindByChainIDHex(in.TransactionParams.Chain)
 		if !ok {
 			return echo.NewHTTPError(http.StatusBadRequest, "network does not exist")
 		}
@@ -112,7 +112,7 @@ func (a *Api) SignTransactionFinalize() echo.HandlerFunc {
 			return err
 		}
 
-		network, ok := networks.FindByChain(in.TransactionParams.Chain)
+		network, ok := networks.FindByChainIDHex(in.TransactionParams.Chain)
 		if !ok {
 			return echo.NewHTTPError(http.StatusBadRequest, "network does not exist")
 		}

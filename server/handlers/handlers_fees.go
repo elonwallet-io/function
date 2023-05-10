@@ -26,7 +26,7 @@ func (a *Api) EstimateFees() echo.HandlerFunc {
 			return err
 		}
 
-		network, ok := networks.FindByChain(in.Chain)
+		network, ok := networks.FindByChainIDHex(in.Chain)
 		if !ok {
 			return echo.NewHTTPError(http.StatusBadRequest, "network does not exist")
 		}

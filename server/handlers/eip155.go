@@ -63,7 +63,7 @@ func createTransaction(params transactionParams, network models.Network, client 
 	}
 
 	dynTx := &types.DynamicFeeTx{
-		ChainID:   new(big.Int).SetInt64(network.Chain),
+		ChainID:   new(big.Int).SetInt64(network.ChainID),
 		Nonce:     nonce,
 		GasFeeCap: feeCap,
 		GasTipCap: tipCap,
