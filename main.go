@@ -48,7 +48,11 @@ func run() error {
 		return err
 	}
 
-	s := server.New(cfg, signingKey, repo)
+	s, err := server.New(cfg, signingKey, repo)
+	if err != nil {
+		return fmt.Errorf("failed to create server: %w", err)
+	}
+
 	go func() {
 		err := s.Run()
 		if err != nil {
