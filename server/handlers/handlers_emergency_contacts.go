@@ -34,16 +34,13 @@ func (a *Api) HandleCreateEmergencyContact() echo.HandlerFunc {
 			return err
 		}
 
-		enclaveApiClient := common.NewEnclaveApiClient(enclaveURL, a.cfg.DevelopmentMode)
-		err = enclaveApiClient.SendEmergencyAccessInvitation(models.EmergencyAccessInvitation{
-			GrantorEmail:        user.Email,
-			WaitingPeriodInDays: in.WaitingPeriodInDays,
-		})
+		enclaveApiClient := common.NewEnclaveApiClient(enclaveURL)
+		err = enclaveApiClient.SendEmergencyAccessInvitation(in.WaitingPeriodInDays)
 		if err != nil {
 			return err
 		}
 
-		user.EmergencyAccessContacts[in.Email] = models.EmergencyAccessData{
+		user.EmergencyAccessContacts[in.Email] = &models.EmergencyAccessData{
 			Email:                in.Email,
 			EnclaveURL:           enclaveURL,
 			HasAccepted:          false,
@@ -69,8 +66,8 @@ func (a *Api) HandleGetEmergencyContacts() echo.HandlerFunc {
 
 		contacts := make([]models.EmergencyAccessData, len(user.EmergencyAccessContacts))
 		i := 0
-		for _, data := range user.EmergencyAccessContacts {
-			contacts[i] = data
+		for _, contact := range user.EmergencyAccessContacts {
+			contacts[i] = *contact
 			i++
 		}
 
@@ -82,8 +79,7 @@ func (a *Api) HandleGetEmergencyContacts() echo.HandlerFunc {
 
 func (a *Api) HandleEmergencyAccessGrantResponse() echo.HandlerFunc {
 	type input struct {
-		Email  string `json:"email" validate:"required,email"`
-		Accept bool   `json:"accept"`
+		Accept bool `json:"accept"`
 	}
 	return func(c echo.Context) error {
 		var in input
@@ -97,9 +93,12 @@ func (a *Api) HandleEmergencyAccessGrantResponse() echo.HandlerFunc {
 		user := c.Get("user").(models.User)
 		claims := c.Get("claims").(common.EnclaveClaims)
 
-		contact := user.EmergencyAccessContacts[claims.Subject]
+		data, ok := user.EmergencyAccessContacts[claims.Subject]
+		if !ok {
+			return echo.NewHTTPError(http.StatusNotFound)
+		}
 
-		if contact.HasAccepted {
+		if data.HasAccepted {
 			return echo.NewHTTPError(http.StatusBadRequest, "Invitation has already been accepted")
 		}
 
@@ -111,11 +110,12 @@ func (a *Api) HandleEmergencyAccessGrantResponse() echo.HandlerFunc {
 		var title string
 		var body string
 		if in.Accept {
-			contact.HasAccepted = true
+			data.HasAccepted = true
+			user.EmergencyAccessContacts[claims.Subject] = data
 			title = "Invitation has been accepted"
 			body = fmt.Sprintf("%s has accepted your request to be your emergency contact", claims.Subject)
 		} else {
-			delete(user.EmergencyAccessContacts, in.Email)
+			delete(user.EmergencyAccessContacts, claims.Subject)
 			title = "Invitation has been rejected"
 			body = fmt.Sprintf("%s has rejected your request to be your emergency contact", claims.Subject)
 		}
@@ -133,20 +133,11 @@ func (a *Api) HandleEmergencyAccessGrantResponse() echo.HandlerFunc {
 }
 
 func (a *Api) HandleEmergencyAccessRequest() echo.HandlerFunc {
-	type input struct {
-		GrantorEmail string `json:"grantor_email" validate:"required,email"`
-	}
 	return func(c echo.Context) error {
-		var in input
-		if err := c.Bind(&in); err != nil {
-			return err
-		}
-		if err := c.Validate(&in); err != nil {
-			return err
-		}
-
 		user := c.Get("user").(models.User)
-		data, ok := user.EmergencyAccessContacts[in.GrantorEmail]
+		claims := c.Get("claims").(common.EnclaveClaims)
+
+		data, ok := user.EmergencyAccessContacts[claims.Subject]
 		if !ok {
 			return echo.NewHTTPError(http.StatusNotFound)
 		}
@@ -159,16 +150,12 @@ func (a *Api) HandleEmergencyAccessRequest() echo.HandlerFunc {
 
 		data.HasRequestedTakeover = true
 		data.TakeoverAllowedAfter = time.Now().Add(time.Duration(data.WaitingPeriodInDays) * 24 * time.Hour).Unix()
-		user.EmergencyAccessContacts[in.GrantorEmail] = data
 		err := a.repo.UpsertUser(user)
 		if err != nil {
 			return err
 		}
 
-		backendApiClient, err := common.NewBackendApiClient(a.cfg.BackendURL, user, a.signingKey.PrivateKey)
-		if err != nil {
-			return fmt.Errorf("failed to create backend api client: %w", err)
-		}
+		backendApiClient := common.NewBackendApiClient(a.cfg.BackendURL, a.cfg.DevelopmentMode)
 		err = backendApiClient.SendEmail(user.Email, "Emergency Access to requested", fmt.Sprintf("%s has requested emergency access to your account. If you don't deny this request before %v, your account may be taken over.", in.GrantorEmail, time.Unix(data.TakeoverAllowedAfter, 0)))
 		if err != nil {
 			return err

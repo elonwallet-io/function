@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"crypto/ed25519"
-	"errors"
+	"github.com/Leantar/elonwallet-function/config"
 	"github.com/Leantar/elonwallet-function/models"
 	"github.com/Leantar/elonwallet-function/server/common"
 	"github.com/golang-jwt/jwt/v5"
@@ -12,7 +12,11 @@ import (
 	"time"
 )
 
-const invalidSession = "Invalid or malformed jwt"
+const (
+	invalidSession = "Invalid or malformed jwt"
+	KindGrant      = "grant"
+	KindContact    = "contact"
+)
 
 func CheckAuthentication(repo common.Repository, pk ed25519.PublicKey, additionalScopes ...string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
@@ -55,7 +59,7 @@ func CheckStrictAuthentication(repo common.Repository, pk ed25519.PublicKey, add
 	}
 }
 
-func CheckEmergencyContactAuthentication(repo common.Repository) echo.MiddlewareFunc {
+func CheckEmergencyContactAuthentication(repo common.Repository, cfg config.Config, kind string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			bearer := c.Request().Header.Get("Authorization")
@@ -68,14 +72,12 @@ func CheckEmergencyContactAuthentication(repo common.Repository) echo.Middleware
 				return err
 			}
 
-			claims, err := common.ValidateJWT(bearer[7:], trustedEmergencyContactKeyFunc(user))
+			claims, err := common.ValidateJWT(bearer[7:], elonwalletEnclaveKeyFunc(cfg))
 			if err != nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, invalidSession).SetInternal(err)
 			}
 
-			contact := user.EmergencyAccessContacts[claims.Subject]
-
-			c.Set("contact", contact)
+			c.Set("claims", claims)
 			c.Set("user", user)
 
 			return next(c)
@@ -120,18 +122,25 @@ func defaultKeyFunc(pk ed25519.PublicKey) jwt.Keyfunc {
 	}
 }
 
-func trustedEmergencyContactKeyFunc(user models.User) jwt.Keyfunc {
+func elonwalletEnclaveKeyFunc(cfg config.Config) jwt.Keyfunc {
 	return func(token *jwt.Token) (interface{}, error) {
 		email, err := token.Claims.GetSubject()
 		if err != nil {
 			return nil, err
 		}
 
-		contact, ok := user.EmergencyAccessContacts[email]
-		if !ok {
-			return nil, errors.New("emergency contact not found")
+		backendApiClient := common.NewBackendApiClient(cfg.BackendURL)
+		enclaveURL, err := backendApiClient.GetEnclaveURL(email)
+		if err != nil {
+			return nil, err
 		}
 
-		return contact.JWTSigningKey, nil
+		enclaveApiClient := common.NewEnclaveApiClient(enclaveURL)
+		jwtSigningKey, err := enclaveApiClient.GetJWTVerificationKey()
+		if err != nil {
+			return nil, err
+		}
+
+		return jwtSigningKey, nil
 	}
 }

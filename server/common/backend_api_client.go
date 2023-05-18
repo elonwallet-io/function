@@ -1,6 +1,9 @@
 package common
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"bytes"
 	"crypto/ed25519"
 	"encoding/json"
@@ -98,7 +101,24 @@ func (b *BackendApiClient) doPostRequest(url string, payload any, out any) error
 }
 
 func (b *BackendApiClient) GetEnclaveURL(email string) (string, error) {
-	return "", nil
+	res, err := http.Get(fmt.Sprintf("%s/users/%s/enclave-url?questioner=enclave", b.url, email))
+	if err != nil {
+		return "", fmt.Errorf("failed to get enclaveURL: %w", err)
+	}
+
+	if res.StatusCode != 200 {
+		return "", fmt.Errorf("received error status code: %d", res.StatusCode)
+	}
+
+	type input struct {
+		EnclaveURL string `json:"enclave_url"`
+	}
+
+	var in input
+	if err := json.NewDecoder(res.Body).Decode(&in); err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
+	}
+	return in.EnclaveURL, nil
 }
 
 func (b *BackendApiClient) SendEmail(receiver, subject, body string) error {

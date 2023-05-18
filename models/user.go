@@ -7,13 +7,13 @@ import (
 )
 
 type User struct {
-	WebauthnData            WebauthnData                      `json:"webauthn_data"`
-	Wallets                 Wallets                           `json:"wallets"`
-	OTP                     OTP                               `json:"otp,omitempty"`
-	Email                   string                            `json:"email"`
-	Networks                []Network                         `json:"networks"`
-	EmergencyAccessContacts map[string]EmergencyAccessContact `json:"emergency_access_contacts"`
-	EmergencyAccessGrantors map[string]EmergencyAccessGrant   `json:"emergency_access_grantors"`
+	WebauthnData            WebauthnData                    `json:"webauthn_data"`
+	Wallets                 Wallets                         `json:"wallets"`
+	OTP                     OTP                             `json:"otp,omitempty"`
+	Email                   string                          `json:"email"`
+	Networks                []Network                       `json:"networks"`
+	EmergencyAccessContacts map[string]*EmergencyAccessData `json:"emergency_access_contacts"`
+	EmergencyAccessGrants   map[string]*EmergencyAccessData `json:"emergency_access_grants"`
 }
 
 func NewUser(email string, displayName string) User {
@@ -32,7 +32,7 @@ func NewUser(email string, displayName string) User {
 			Sessions:    make(map[string]webauthn.SessionData),
 		},
 		Wallets:                 make(Wallets, 0),
-		EmergencyAccessContacts: make(map[string]EmergencyAccessContact),
-		EmergencyAccessGrantors: make(map[string]EmergencyAccessGrant),
+		EmergencyAccessContacts: make(map[string]*EmergencyAccessData),
+		EmergencyAccessGrants:   make(map[string]*EmergencyAccessData),
 	}
 }
