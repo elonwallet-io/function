@@ -1,6 +1,7 @@
 package common
 
 import (
+	"crypto/ed25519"
 	"github.com/Leantar/elonwallet-function/models"
 	"strings"
 )
@@ -33,4 +34,8 @@ func (e *EnclaveApiClient) SendEmergencyAccessTakeoverRequest() ([]models.Wallet
 
 func (e *EnclaveApiClient) SendEmergencyAccessInvitationResponse(accept bool) error {
 	return nil
+}
+
+func (e *EnclaveApiClient) GetJWTVerificationKey() (ed25519.PublicKey, error) {
+	return nil, nil
 }

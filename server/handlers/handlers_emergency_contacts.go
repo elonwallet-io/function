@@ -95,12 +95,11 @@ func (a *Api) HandleEmergencyAccessGrantResponse() echo.HandlerFunc {
 		}
 
 		user := c.Get("user").(models.User)
-		data, ok := user.EmergencyAccessContacts[in.Email]
-		if !ok {
-			return echo.NewHTTPError(http.StatusNotFound, "Invitation not found")
-		}
+		claims := c.Get("claims").(common.EnclaveClaims)
 
-		if data.HasAccepted {
+		contact := user.EmergencyAccessContacts[claims.Subject]
+
+		if contact.HasAccepted {
 			return echo.NewHTTPError(http.StatusBadRequest, "Invitation has already been accepted")
 		}
 
@@ -109,18 +108,20 @@ func (a *Api) HandleEmergencyAccessGrantResponse() echo.HandlerFunc {
 			return fmt.Errorf("failed to create backend api client: %w", err)
 		}
 
+		var title string
+		var body string
 		if in.Accept {
-			data.HasAccepted = true
-			err := backendApiClient.SendEmail(user.Email, "Invitation has been accepted", "A user has accepted your request to be your emergency contact")
-			if err != nil {
-				return err
-			}
+			contact.HasAccepted = true
+			title = "Invitation has been accepted"
+			body = fmt.Sprintf("%s has accepted your request to be your emergency contact", claims.Subject)
 		} else {
 			delete(user.EmergencyAccessContacts, in.Email)
-			err := backendApiClient.SendEmail(user.Email, "Invitation has been rejected", "A user has rejected your request to be your emergency contact")
-			if err != nil {
-				return err
-			}
+			title = "Invitation has been rejected"
+			body = fmt.Sprintf("%s has rejected your request to be your emergency contact", claims.Subject)
+		}
+		err = backendApiClient.SendEmail(user.Email, title, body)
+		if err != nil {
+			return err
 		}
 		err = a.repo.UpsertUser(user)
 		if err != nil {
@@ -158,7 +159,7 @@ func (a *Api) HandleEmergencyAccessRequest() echo.HandlerFunc {
 
 		data.HasRequestedTakeover = true
 		data.TakeoverAllowedAfter = time.Now().Add(time.Duration(data.WaitingPeriodInDays) * 24 * time.Hour).Unix()
-		user.EmergencyAccessGrantors[in.GrantorEmail] = data
+		user.EmergencyAccessContacts[in.GrantorEmail] = data
 		err := a.repo.UpsertUser(user)
 		if err != nil {
 			return err

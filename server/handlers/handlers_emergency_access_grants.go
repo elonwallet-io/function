@@ -34,7 +34,7 @@ func (a *Api) HandleCreateEmergencyAccessGrant() echo.HandlerFunc {
 			return err
 		}
 
-		user.EmergencyAccessGrantors[in.GrantorEmail] = models.EmergencyAccessData{
+		user.EmergencyAccessGrantors[in.GrantorEmail] = models.EmergencyAccessContact{
 			Email:                in.GrantorEmail,
 			EnclaveURL:           enclaveURL,
 			HasAccepted:          false,
@@ -58,12 +58,12 @@ func (a *Api) HandleCreateEmergencyAccessGrant() echo.HandlerFunc {
 
 func (a *Api) HandleGetEmergencyAccessGrantors() echo.HandlerFunc {
 	type output struct {
-		EmergencyAccessGrantors []models.EmergencyAccessData `json:"emergency_access_grantors"`
+		EmergencyAccessGrantors []models.EmergencyAccessContact `json:"emergency_access_grantors"`
 	}
 	return func(c echo.Context) error {
 		user := c.Get("user").(models.User)
 
-		grantors := make([]models.EmergencyAccessData, len(user.EmergencyAccessGrantors))
+		grantors := make([]models.EmergencyAccessContact, len(user.EmergencyAccessGrantors))
 		i := 0
 		for _, data := range user.EmergencyAccessGrantors {
 			grantors[i] = data
@@ -156,6 +156,76 @@ func (a *Api) HandleRequestEmergencyAccess() echo.HandlerFunc {
 		data.TakeoverAllowedAfter = time.Now().Add(time.Duration(data.WaitingPeriodInDays) * 24 * time.Hour).Unix()
 		user.EmergencyAccessGrantors[in.GrantorEmail] = data
 		err = a.repo.UpsertUser(user)
+		if err != nil {
+			return err
+		}
+
+		return c.NoContent(http.StatusOK)
+	}
+}
+
+func (a *Api) HandleEmergencyAccessGrantRevocation() echo.HandlerFunc {
+	type input struct {
+		GrantorEmail string `json:"grantor_email" validate:"required,email"`
+	}
+	return func(c echo.Context) error {
+		var in input
+		if err := c.Bind(&in); err != nil {
+			return err
+		}
+		if err := c.Validate(&in); err != nil {
+			return err
+		}
+
+		user := c.Get("user").(models.User)
+		_, ok := user.EmergencyAccessGrantors[in.GrantorEmail]
+		if !ok {
+			return echo.NewHTTPError(http.StatusNotFound)
+		}
+
+		delete(user.EmergencyAccessGrantors, in.GrantorEmail)
+		err := a.repo.UpsertUser(user)
+		if err != nil {
+			return err
+		}
+
+		backendApiClient := common.NewBackendApiClient(a.cfg.BackendURL, a.cfg.DevelopmentMode)
+		err = backendApiClient.SendEmail(user.Email, "Emergency Access Grant was revoked", fmt.Sprintf("You are no longer registered as an emergency contact for the user %s", in.GrantorEmail))
+		if err != nil {
+			return err
+		}
+
+		return c.NoContent(http.StatusOK)
+	}
+}
+func (a *Api) HandleEmergencyAccessRequestDenial() echo.HandlerFunc {
+	type input struct {
+		GrantorEmail string `json:"grantor_email" validate:"required,email"`
+	}
+	return func(c echo.Context) error {
+		var in input
+		if err := c.Bind(&in); err != nil {
+			return err
+		}
+		if err := c.Validate(&in); err != nil {
+			return err
+		}
+
+		user := c.Get("user").(models.User)
+		data, ok := user.EmergencyAccessGrantors[in.GrantorEmail]
+		if !ok {
+			return echo.NewHTTPError(http.StatusNotFound)
+		}
+
+		data.HasRequestedTakeover = false
+		data.TakeoverAllowedAfter = 0
+		err := a.repo.UpsertUser(user)
+		if err != nil {
+			return err
+		}
+
+		backendApiClient := common.NewBackendApiClient(a.cfg.BackendURL, a.cfg.DevelopmentMode)
+		err = backendApiClient.SendEmail(user.Email, "Emergency Access Request was denied", fmt.Sprintf("Your pending request to takeover the wallets of %s has been denied by the owner", in.GrantorEmail))
 		if err != nil {
 			return err
 		}

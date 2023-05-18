@@ -67,7 +67,7 @@ func CreateCredentialEnclaveJWT(user models.User, sk ed25519.PrivateKey) (string
 	now := time.Now()
 	claims := EnclaveClaims{
 		"create-credential",
-		"none",
+		"",
 		jwt.RegisteredClaims{
 			Issuer:    Enclave,
 			Subject:   user.Email,
@@ -83,29 +83,22 @@ func CreateCredentialEnclaveJWT(user models.User, sk ed25519.PrivateKey) (string
 	return token.SignedString(sk)
 }
 
-func ValidateEnclaveJWT(tokenString, subject string, pk ed25519.PublicKey) (EnclaveClaims, error) {
+func ValidateJWT(tokenString string, keyFunc jwt.Keyfunc) (EnclaveClaims, error) {
 	parser := jwt.NewParser(
 		jwt.WithIssuedAt(),
 		jwt.WithValidMethods([]string{jwt.SigningMethodEdDSA.Alg()}),
 		jwt.WithAudience(Enclave),
 		jwt.WithIssuer(Enclave),
-		jwt.WithSubject(subject),
 	)
 
 	var claims EnclaveClaims
-	_, err := parser.ParseWithClaims(tokenString, &claims, func(token *jwt.Token) (interface{}, error) {
-		return pk, nil
-	})
+	_, err := parser.ParseWithClaims(tokenString, &claims, keyFunc)
 	if err != nil {
 		return EnclaveClaims{}, err
 	}
 
 	if claims.Scope == "" {
 		return EnclaveClaims{}, errors.New("scope is missing")
-	}
-
-	if claims.Credential == "" {
-		return EnclaveClaims{}, errors.New("credential claim is missing")
 	}
 
 	return claims, nil

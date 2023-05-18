@@ -1,6 +1,6 @@
 package models
 
-type EmergencyAccessData struct {
+type EmergencyAccessGrant struct {
 	Email                string `json:"email"`
 	EnclaveURL           string `json:"enclave_url"`
 	HasAccepted          bool   `json:"has_accepted"`
