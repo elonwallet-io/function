@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"github.com/Leantar/elonwallet-function/models"
 	"github.com/labstack/echo/v4"
 	"net/http"
@@ -54,11 +53,10 @@ func (a *Api) CreateWallet() echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusBadRequest, "A wallet with this name already exists")
 		}
 
-		wallet, err := models.NewWallet(in.Name, in.Public)
+		wallet, err := a.createWallet(in.Name, in.Public, user)
 		if err != nil {
-			return fmt.Errorf("failed to create wallet: %w", err)
+			return err
 		}
-
 		user.Wallets = append(user.Wallets, wallet)
 
 		err = a.repo.UpsertUser(user)

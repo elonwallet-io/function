@@ -21,6 +21,7 @@ type Api struct {
 	w          *webauthn.WebAuthn
 	repo       common.Repository
 	signingKey models.SigningKey
+	cfg        config.Config
 }
 
 func NewApi(cfg config.Config, repo common.Repository, signingKey models.SigningKey) (*Api, error) {
@@ -40,5 +41,6 @@ func NewApi(cfg config.Config, repo common.Repository, signingKey models.Signing
 		w:          w,
 		repo:       repo,
 		signingKey: signingKey,
+		cfg:        cfg,
 	}, nil
 }
