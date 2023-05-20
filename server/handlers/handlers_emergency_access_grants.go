@@ -29,7 +29,7 @@ func (a *Api) HandleEmergencyAccessGrantInvitation() echo.HandlerFunc {
 		if err != nil {
 			return fmt.Errorf("failed to create backend api client: %w", err)
 		}
-		enclaveURL, err := backendApiClient.GetEnclaveURL(in.GrantorEmail)
+		enclaveURL, err := backendApiClient.GetEnclaveURL(claims.Subject)
 		if err != nil {
 			return err
 		}
@@ -182,7 +182,10 @@ func (a *Api) HandleEmergencyAccessGrantRevocation() echo.HandlerFunc {
 			return err
 		}
 
-		backendApiClient := common.NewBackendApiClient(a.cfg.BackendURL)
+		backendApiClient, err := common.NewBackendApiClient(a.cfg.BackendURL, user, a.signingKey.PrivateKey)
+		if err != nil {
+			return fmt.Errorf("failed to create backend api client: %w", err)
+		}
 		title := "Emergency Access Grant was revoked"
 		body := fmt.Sprintf("You are no longer registered as an emergency contact for %s", claims.Subject)
 		err = backendApiClient.SendEmail(user.Email, title, body)
@@ -211,7 +214,10 @@ func (a *Api) HandleEmergencyAccessRequestDenial() echo.HandlerFunc {
 			return err
 		}
 
-		backendApiClient := common.NewBackendApiClient(a.cfg.BackendURL)
+		backendApiClient, err := common.NewBackendApiClient(a.cfg.BackendURL, user, a.signingKey.PrivateKey)
+		if err != nil {
+			return fmt.Errorf("failed to create backend api client: %w", err)
+		}
 		title := "Emergency Access Request was denied"
 		body := fmt.Sprintf("Your pending request to takeover the wallets of %s has been denied by the owner", claims.Subject)
 		err = backendApiClient.SendEmail(user.Email, title, body)

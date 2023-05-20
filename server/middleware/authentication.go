@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"crypto/ed25519"
+	"fmt"
 	"github.com/Leantar/elonwallet-function/config"
 	"github.com/Leantar/elonwallet-function/models"
 	"github.com/Leantar/elonwallet-function/server/common"
@@ -59,7 +60,7 @@ func CheckStrictAuthentication(repo common.Repository, pk ed25519.PublicKey, add
 	}
 }
 
-func CheckEmergencyContactAuthentication(repo common.Repository, cfg config.Config, kind string) echo.MiddlewareFunc {
+func CheckEmergencyContactAuthentication(repo common.Repository, cfg config.Config, kind string, sk ed25519.PrivateKey) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			bearer := c.Request().Header.Get("Authorization")
@@ -72,7 +73,7 @@ func CheckEmergencyContactAuthentication(repo common.Repository, cfg config.Conf
 				return err
 			}
 
-			claims, err := common.ValidateJWT(bearer[7:], elonwalletEnclaveKeyFunc(cfg))
+			claims, err := common.ValidateJWT(bearer[7:], elonwalletEnclaveKeyFunc(cfg, user, sk))
 			if err != nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, invalidSession).SetInternal(err)
 			}
@@ -122,14 +123,17 @@ func defaultKeyFunc(pk ed25519.PublicKey) jwt.Keyfunc {
 	}
 }
 
-func elonwalletEnclaveKeyFunc(cfg config.Config) jwt.Keyfunc {
+func elonwalletEnclaveKeyFunc(cfg config.Config, user models.User, sk ed25519.PrivateKey) jwt.Keyfunc {
 	return func(token *jwt.Token) (interface{}, error) {
 		email, err := token.Claims.GetSubject()
 		if err != nil {
 			return nil, err
 		}
 
-		backendApiClient := common.NewBackendApiClient(cfg.BackendURL)
+		backendApiClient, err := common.NewBackendApiClient(cfg.BackendURL, user, sk)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create backend api client: %w", err)
+		}
 		enclaveURL, err := backendApiClient.GetEnclaveURL(email)
 		if err != nil {
 			return nil, err

@@ -1,9 +1,6 @@
 package common
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/http"
 	"bytes"
 	"crypto/ed25519"
 	"encoding/json"

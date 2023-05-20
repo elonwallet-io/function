@@ -155,8 +155,13 @@ func (a *Api) HandleEmergencyAccessRequest() echo.HandlerFunc {
 			return err
 		}
 
-		backendApiClient := common.NewBackendApiClient(a.cfg.BackendURL, a.cfg.DevelopmentMode)
-		err = backendApiClient.SendEmail(user.Email, "Emergency Access to requested", fmt.Sprintf("%s has requested emergency access to your account. If you don't deny this request before %v, your account may be taken over.", in.GrantorEmail, time.Unix(data.TakeoverAllowedAfter, 0)))
+		backendApiClient, err := common.NewBackendApiClient(a.cfg.BackendURL, user, a.signingKey.PrivateKey)
+		if err != nil {
+			return fmt.Errorf("failed to create backend api client: %w", err)
+		}
+		title := "Emergency Access to requested"
+		body := fmt.Sprintf("%s has requested emergency access to your account. If you don't deny this request before %v, your account may be taken over.", claims.Subject, time.Unix(data.TakeoverAllowedAfter, 0))
+		err = backendApiClient.SendEmail(user.Email, title, body)
 		if err != nil {
 			return err
 		}
