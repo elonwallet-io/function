@@ -96,3 +96,11 @@ func (b *BackendApiClient) doPostRequest(url string, payload any, out any) error
 
 	return nil
 }
+
+func (b *BackendApiClient) GetEnclaveURL(email string) (string, error) {
+	return "", nil
+}
+
+func (b *BackendApiClient) SendEmail(receiver, subject, body string) error {
+	return nil
+}
