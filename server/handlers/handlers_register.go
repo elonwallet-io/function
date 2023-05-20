@@ -81,13 +81,11 @@ func (a *Api) RegisterFinalize() echo.HandlerFunc {
 		if err != nil {
 			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
-
 		user.WebauthnData.Credentials[in.CredentialName] = *cred
 
-		//Create a default wallet for the user
-		wallet, err := models.NewWallet("Default", false)
+		wallet, err := a.createWallet("Default", true, user)
 		if err != nil {
-			return fmt.Errorf("failed to create new wallet: %w", err)
+			return err
 		}
 		user.Wallets = append(user.Wallets, wallet)
 

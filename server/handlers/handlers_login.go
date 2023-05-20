@@ -62,7 +62,7 @@ func (a *Api) LoginFinalize() echo.HandlerFunc {
 		}
 
 		//create an auth token to be used with the backend
-		jwtString, err := common.CreateBackendJWT(user, a.signingKey.PrivateKey)
+		jwtString, err := common.CreateBackendJWT(user, "user", a.signingKey.PrivateKey)
 		if err != nil {
 			return fmt.Errorf("failed to create jwt: %w", err)
 		}

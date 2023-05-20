@@ -56,7 +56,7 @@ func setFieldContent(field reflect.Value, val string) error {
 		if err != nil {
 			return fmt.Errorf("variable not set or invalid: %w", err)
 		}
-
+		
 		field.SetBool(v)
 	case reflect.String:
 		field.SetString(val)
@@ -65,6 +65,7 @@ func setFieldContent(field reflect.Value, val string) error {
 		if err != nil {
 			return fmt.Errorf("variable not set or invalid: %w", err)
 		}
+
 		field.SetUint(v)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		v, err := strconv.ParseInt(val, 10, fieldType.Bits())

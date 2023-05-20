@@ -14,6 +14,7 @@ const (
 )
 
 type BackendClaims struct {
+	Scope string `json:"scope"`
 	jwt.RegisteredClaims
 }
 
@@ -23,9 +24,10 @@ type EnclaveClaims struct {
 	jwt.RegisteredClaims
 }
 
-func CreateBackendJWT(user models.User, sk ed25519.PrivateKey) (string, error) {
+func CreateBackendJWT(user models.User, scope string, sk ed25519.PrivateKey) (string, error) {
 	now := time.Now()
 	claims := BackendClaims{
+		scope,
 		jwt.RegisteredClaims{
 			Issuer:    Enclave,
 			Subject:   user.Email,
