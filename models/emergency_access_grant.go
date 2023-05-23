@@ -6,4 +6,5 @@ type EmergencyAccessGrant struct {
 	HasAccepted          bool   `json:"has_accepted"`
 	HasRequestedTakeover bool   `json:"has_requested_takeover"`
 	TakeoverAllowedAfter int64  `json:"takeover_allowed_after"`
+	NotificationSeriesID string `json:"notification_series_id"`
 }

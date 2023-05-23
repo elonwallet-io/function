@@ -141,8 +141,27 @@ func (a *Api) HandleRequestEmergencyAccess() echo.HandlerFunc {
 			return err
 		}
 
+		backendApiClient, err := common.NewBackendApiClient(a.cfg.BackendURL, user, a.signingKey.PrivateKey)
+		if err != nil {
+			return fmt.Errorf("failed to create backend api client: %w", err)
+		}
+
+		notification := []models.ScheduledNotification{
+			{
+				SendAfter: takeoverAllowedAfter,
+				Title:     "Emergency Access has been granted",
+				Body:      fmt.Sprintf("Your pending emergency access request for the account of %s has been granted", data.Email),
+			},
+		}
+
+		seriesID, err := backendApiClient.ScheduleNotificationSeries(notification)
+		if err != nil {
+			return err
+		}
+
 		data.HasRequestedTakeover = true
 		data.TakeoverAllowedAfter = takeoverAllowedAfter
+		data.NotificationSeriesID = seriesID
 		err = a.repo.UpsertUser(user)
 		if err != nil {
 			return err
@@ -188,14 +207,20 @@ func (a *Api) HandleEmergencyAccessRequestDenial() echo.HandlerFunc {
 		}
 
 		title := "Emergency Access Request was denied"
-		body := fmt.Sprintf("Your pending request to takeover the account of %s has been denied", claims.Subject)
+		body := fmt.Sprintf("Your pending emergency access request to takeover the account of %s has been denied", claims.Subject)
 		err = backendApiClient.SendNotification(title, body)
+		if err != nil {
+			return err
+		}
+
+		err = backendApiClient.DeleteNotificationSeries(data.NotificationSeriesID)
 		if err != nil {
 			return err
 		}
 
 		data.HasRequestedTakeover = false
 		data.TakeoverAllowedAfter = 0
+		data.NotificationSeriesID = ""
 		err = a.repo.UpsertUser(user)
 		if err != nil {
 			return err
