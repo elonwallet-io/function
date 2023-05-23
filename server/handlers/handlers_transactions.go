@@ -10,7 +10,7 @@ import (
 	"net/http"
 )
 
-func (a *Api) SendTransactionInitialize() echo.HandlerFunc {
+func (a *Api) HandleSendTransactionInitialize() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		user := c.Get("user").(models.User)
 
@@ -23,7 +23,7 @@ func (a *Api) SendTransactionInitialize() echo.HandlerFunc {
 	}
 }
 
-func (a *Api) SendTransactionFinalize() echo.HandlerFunc {
+func (a *Api) HandleSendTransactionFinalize() echo.HandlerFunc {
 	type input struct {
 		AssertionResponse protocol.CredentialAssertionResponse `json:"assertion_response"`
 		TransactionParams transactionParams                    `json:"transaction_params"`
@@ -73,7 +73,7 @@ func (a *Api) SendTransactionFinalize() echo.HandlerFunc {
 	}
 }
 
-func (a *Api) SignTransactionInitialize() echo.HandlerFunc {
+func (a *Api) HandleSignTransactionInitialize() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		user := c.Get("user").(models.User)
 
@@ -86,7 +86,7 @@ func (a *Api) SignTransactionInitialize() echo.HandlerFunc {
 	}
 }
 
-func (a *Api) SignTransactionFinalize() echo.HandlerFunc {
+func (a *Api) HandleSignTransactionFinalize() echo.HandlerFunc {
 	type input struct {
 		AssertionResponse protocol.CredentialAssertionResponse `json:"assertion_response"`
 		TransactionParams transactionParams                    `json:"transaction_params"`

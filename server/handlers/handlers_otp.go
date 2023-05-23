@@ -15,7 +15,7 @@ import (
 
 const invalidOTP = "The OTP provided is invalid or expired. Try creating a new OTP."
 
-func (a *Api) GetOrCreateOTP() echo.HandlerFunc {
+func (a *Api) HandleGetOTP() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		user := c.Get("user").(models.User)
 
@@ -41,7 +41,7 @@ func (a *Api) GetOrCreateOTP() echo.HandlerFunc {
 	}
 }
 
-func (a *Api) LoginWithOTP() echo.HandlerFunc {
+func (a *Api) HandleLoginWithOTP() echo.HandlerFunc {
 	type input struct {
 		OTP string `json:"otp" validate:"otp"`
 	}
@@ -118,7 +118,7 @@ func generateOTP() (string, error) {
 }
 
 func createOTPSessionCookie(user models.User, sk ed25519.PrivateKey) (*http.Cookie, error) {
-	jwt, err := common.CreateCredentialEnclaveJWT(user, sk)
+	jwt, err := common.CreateEnclaveJWT(user, common.ScopeCreateCredential, "", sk)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create jwt: %w", err)
 	}

@@ -15,14 +15,12 @@ import (
 
 const (
 	invalidSession = "Invalid or malformed jwt"
-	KindGrant      = "grant"
-	KindContact    = "contact"
 )
 
-func CheckAuthentication(repo common.Repository, pk ed25519.PublicKey, additionalScopes ...string) echo.MiddlewareFunc {
+func CheckAuthentication(repo common.Repository, pk ed25519.PublicKey, allowedScopes ...string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			user, claims, err := checkDefaultAuth(c, repo, pk, additionalScopes...)
+			user, claims, err := frontendAuth(c, repo, pk, allowedScopes)
 			if err != nil {
 				return err
 			}
@@ -35,10 +33,10 @@ func CheckAuthentication(repo common.Repository, pk ed25519.PublicKey, additiona
 	}
 }
 
-func CheckStrictAuthentication(repo common.Repository, pk ed25519.PublicKey, additionalScopes ...string) echo.MiddlewareFunc {
+func CheckStrictAuthentication(repo common.Repository, pk ed25519.PublicKey, allowedScopes ...string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			user, claims, err := checkDefaultAuth(c, repo, pk, additionalScopes...)
+			user, claims, err := frontendAuth(c, repo, pk, allowedScopes)
 			if err != nil {
 				return err
 			}
@@ -60,7 +58,7 @@ func CheckStrictAuthentication(repo common.Repository, pk ed25519.PublicKey, add
 	}
 }
 
-func CheckEmergencyContactAuthentication(repo common.Repository, cfg config.Config, kind string, sk ed25519.PrivateKey) echo.MiddlewareFunc {
+func CheckEnclaveAuthentication(repo common.Repository, cfg config.Config) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			bearer := c.Request().Header.Get("Authorization")
@@ -73,9 +71,13 @@ func CheckEmergencyContactAuthentication(repo common.Repository, cfg config.Conf
 				return err
 			}
 
-			claims, err := common.ValidateJWT(bearer[7:], elonwalletEnclaveKeyFunc(cfg, user, sk))
+			claims, err := common.ValidateJWT(bearer[7:], enclaveKeyFunc(cfg))
 			if err != nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, invalidSession).SetInternal(err)
+			}
+
+			if claims.Scope != "enclave" {
+				return echo.NewHTTPError(http.StatusUnauthorized, invalidSession)
 			}
 
 			c.Set("claims", claims)
@@ -86,7 +88,7 @@ func CheckEmergencyContactAuthentication(repo common.Repository, cfg config.Conf
 	}
 }
 
-func checkDefaultAuth(c echo.Context, repo common.Repository, pk ed25519.PublicKey, additionalScopes ...string) (models.User, common.EnclaveClaims, error) {
+func frontendAuth(c echo.Context, repo common.Repository, pk ed25519.PublicKey, allowedScopes []string) (models.User, common.EnclaveClaims, error) {
 	cookie, err := c.Request().Cookie("session")
 	if err != nil {
 		return models.User{}, common.EnclaveClaims{}, echo.NewHTTPError(http.StatusUnauthorized, "Missing session cookie")
@@ -97,12 +99,12 @@ func checkDefaultAuth(c echo.Context, repo common.Repository, pk ed25519.PublicK
 		return models.User{}, common.EnclaveClaims{}, err
 	}
 
-	claims, err := common.ValidateJWT(cookie.Value, defaultKeyFunc(pk))
+	claims, err := common.ValidateJWT(cookie.Value, frontendKeyFunc(pk))
 	if err != nil {
 		return models.User{}, common.EnclaveClaims{}, echo.NewHTTPError(http.StatusUnauthorized, invalidSession).SetInternal(err)
 	}
 
-	if !isAllowedScope(additionalScopes, claims) {
+	if !isAllowedScope(allowedScopes, claims) {
 		return models.User{}, common.EnclaveClaims{}, echo.NewHTTPError(http.StatusUnauthorized, invalidSession)
 	}
 
@@ -114,23 +116,23 @@ func checkDefaultAuth(c echo.Context, repo common.Repository, pk ed25519.PublicK
 }
 
 func isAllowedScope(scopes []string, claims common.EnclaveClaims) bool {
-	return claims.Scope == "all" || slices.Contains(scopes, claims.Scope)
+	return slices.Contains(scopes, claims.Scope)
 }
 
-func defaultKeyFunc(pk ed25519.PublicKey) jwt.Keyfunc {
+func frontendKeyFunc(pk ed25519.PublicKey) jwt.Keyfunc {
 	return func(token *jwt.Token) (interface{}, error) {
 		return pk, nil
 	}
 }
 
-func elonwalletEnclaveKeyFunc(cfg config.Config, user models.User, sk ed25519.PrivateKey) jwt.Keyfunc {
+func enclaveKeyFunc(cfg config.Config) jwt.Keyfunc {
 	return func(token *jwt.Token) (interface{}, error) {
 		email, err := token.Claims.GetSubject()
 		if err != nil {
 			return nil, err
 		}
 
-		backendApiClient, err := common.NewBackendApiClient(cfg.BackendURL, user, sk)
+		backendApiClient, err := common.NewBackendApiClient(cfg.BackendURL, models.User{}, nil)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create backend api client: %w", err)
 		}
@@ -139,7 +141,11 @@ func elonwalletEnclaveKeyFunc(cfg config.Config, user models.User, sk ed25519.Pr
 			return nil, err
 		}
 
-		enclaveApiClient := common.NewEnclaveApiClient(enclaveURL)
+		enclaveApiClient, err := common.NewEnclaveApiClient(enclaveURL, models.User{}, nil)
+		if err != nil {
+			return nil, err
+		}
+
 		jwtSigningKey, err := enclaveApiClient.GetJWTVerificationKey()
 		if err != nil {
 			return nil, err

@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"crypto/ed25519"
 	"fmt"
 	"github.com/Leantar/elonwallet-function/models"
 	"github.com/Leantar/elonwallet-function/server/common"
 	"github.com/labstack/echo/v4"
+	"math"
 	"net/http"
 	"time"
 )
@@ -25,6 +27,11 @@ func (a *Api) HandleCreateEmergencyContact() echo.HandlerFunc {
 
 		user := c.Get("user").(models.User)
 
+		_, ok := user.EmergencyAccessContacts[in.Email]
+		if ok {
+			return echo.NewHTTPError(http.StatusConflict, "Contact already exists")
+		}
+
 		backendApiClient, err := common.NewBackendApiClient(a.cfg.BackendURL, user, a.signingKey.PrivateKey)
 		if err != nil {
 			return fmt.Errorf("failed to create backend api client: %w", err)
@@ -34,19 +41,19 @@ func (a *Api) HandleCreateEmergencyContact() echo.HandlerFunc {
 			return err
 		}
 
-		enclaveApiClient := common.NewEnclaveApiClient(enclaveURL)
-		err = enclaveApiClient.SendEmergencyAccessInvitation(in.WaitingPeriodInDays)
+		enclaveApiClient, err := common.NewEnclaveApiClient(enclaveURL, user, a.signingKey.PrivateKey)
+		if err != nil {
+			return fmt.Errorf("failed to create enclave api client: %w", err)
+		}
+		err = enclaveApiClient.InviteEmergencyAccessContact()
 		if err != nil {
 			return err
 		}
 
-		user.EmergencyAccessContacts[in.Email] = &models.EmergencyAccessData{
-			Email:                in.Email,
-			EnclaveURL:           enclaveURL,
-			HasAccepted:          false,
-			HasRequestedTakeover: false,
-			WaitingPeriodInDays:  in.WaitingPeriodInDays,
-			TakeoverAllowedAfter: 0,
+		user.EmergencyAccessContacts[in.Email] = &models.EmergencyAccessContact{
+			Email:               in.Email,
+			EnclaveURL:          enclaveURL,
+			WaitingPeriodInDays: in.WaitingPeriodInDays,
 		}
 		err = a.repo.UpsertUser(user)
 		if err != nil {
@@ -59,12 +66,12 @@ func (a *Api) HandleCreateEmergencyContact() echo.HandlerFunc {
 
 func (a *Api) HandleGetEmergencyContacts() echo.HandlerFunc {
 	type output struct {
-		EmergencyContacts []models.EmergencyAccessData `json:"emergency_contacts"`
+		EmergencyContacts []models.EmergencyAccessContact `json:"emergency_contacts"`
 	}
 	return func(c echo.Context) error {
 		user := c.Get("user").(models.User)
 
-		contacts := make([]models.EmergencyAccessData, len(user.EmergencyAccessContacts))
+		contacts := make([]models.EmergencyAccessContact, len(user.EmergencyAccessContacts))
 		i := 0
 		for _, contact := range user.EmergencyAccessContacts {
 			contacts[i] = *contact
@@ -74,6 +81,77 @@ func (a *Api) HandleGetEmergencyContacts() echo.HandlerFunc {
 		return c.JSON(http.StatusOK, output{
 			EmergencyContacts: contacts,
 		})
+	}
+}
+
+func (a *Api) HandleRemoveEmergencyContact() echo.HandlerFunc {
+	type input struct {
+		Email string `param:"email" validate:"required,email"`
+	}
+	return func(c echo.Context) error {
+		var in input
+		if err := c.Bind(&in); err != nil {
+			return err
+		}
+		if err := c.Validate(&in); err != nil {
+			return err
+		}
+
+		user := c.Get("user").(models.User)
+
+		_, ok := user.EmergencyAccessContacts[in.Email]
+		if !ok {
+			return echo.NewHTTPError(http.StatusNotFound)
+		}
+
+		delete(user.EmergencyAccessContacts, in.Email)
+		err := a.repo.UpsertUser(user)
+		if err != nil {
+			return err
+		}
+
+		return c.NoContent(http.StatusOK)
+	}
+}
+
+func (a *Api) HandleDenyEmergencyContactAccessRequest() echo.HandlerFunc {
+	type input struct {
+		Email string `param:"email" validate:"required,email"`
+	}
+	return func(c echo.Context) error {
+		var in input
+		if err := c.Bind(&in); err != nil {
+			return err
+		}
+		if err := c.Validate(&in); err != nil {
+			return err
+		}
+
+		user := c.Get("user").(models.User)
+
+		data, ok := user.EmergencyAccessContacts[in.Email]
+		if !ok {
+			return echo.NewHTTPError(http.StatusNotFound)
+		}
+
+		enclaveApiClient, err := common.NewEnclaveApiClient(data.EnclaveURL, user, a.signingKey.PrivateKey)
+		if err != nil {
+			return fmt.Errorf("failed to create enclave api client: %w", err)
+		}
+
+		err = enclaveApiClient.DenyEmergencyAccessRequest()
+		if err != nil {
+			return fmt.Errorf("failed to deny emergency access request: %w", err)
+		}
+
+		data.HasRequestedTakeover = false
+		data.TakeoverAllowedAfter = 0
+		err = a.repo.UpsertUser(user)
+		if err != nil {
+			return err
+		}
+
+		return c.NoContent(http.StatusOK)
 	}
 }
 
@@ -102,28 +180,13 @@ func (a *Api) HandleEmergencyAccessGrantResponse() echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusBadRequest, "Invitation has already been accepted")
 		}
 
-		backendApiClient, err := common.NewBackendApiClient(a.cfg.BackendURL, user, a.signingKey.PrivateKey)
-		if err != nil {
-			return fmt.Errorf("failed to create backend api client: %w", err)
-		}
-
-		var title string
-		var body string
 		if in.Accept {
 			data.HasAccepted = true
-			user.EmergencyAccessContacts[claims.Subject] = data
-			title = "Invitation has been accepted"
-			body = fmt.Sprintf("%s has accepted your request to be your emergency contact", claims.Subject)
 		} else {
 			delete(user.EmergencyAccessContacts, claims.Subject)
-			title = "Invitation has been rejected"
-			body = fmt.Sprintf("%s has rejected your request to be your emergency contact", claims.Subject)
 		}
-		err = backendApiClient.SendEmail(user.Email, title, body)
-		if err != nil {
-			return err
-		}
-		err = a.repo.UpsertUser(user)
+
+		err := a.repo.UpsertUser(user)
 		if err != nil {
 			return err
 		}
@@ -132,7 +195,10 @@ func (a *Api) HandleEmergencyAccessGrantResponse() echo.HandlerFunc {
 	}
 }
 
-func (a *Api) HandleEmergencyAccessRequest() echo.HandlerFunc {
+func (a *Api) HandleEmergencyContactAccessRequest() echo.HandlerFunc {
+	type output struct {
+		TakeoverAllowedAfter int64 `json:"takeover_allowed_after"`
+	}
 	return func(c echo.Context) error {
 		user := c.Get("user").(models.User)
 		claims := c.Get("claims").(common.EnclaveClaims)
@@ -150,44 +216,37 @@ func (a *Api) HandleEmergencyAccessRequest() echo.HandlerFunc {
 
 		data.HasRequestedTakeover = true
 		data.TakeoverAllowedAfter = time.Now().Add(time.Duration(data.WaitingPeriodInDays) * 24 * time.Hour).Unix()
-		err := a.repo.UpsertUser(user)
-		if err != nil {
-			return err
-		}
 
 		backendApiClient, err := common.NewBackendApiClient(a.cfg.BackendURL, user, a.signingKey.PrivateKey)
 		if err != nil {
 			return fmt.Errorf("failed to create backend api client: %w", err)
 		}
-		title := "Emergency Access to requested"
-		body := fmt.Sprintf("%s has requested emergency access to your account. If you don't deny this request before %v, your account may be taken over.", claims.Subject, time.Unix(data.TakeoverAllowedAfter, 0))
-		err = backendApiClient.SendEmail(user.Email, title, body)
+
+		notifications := createScheduledNotifications(data.WaitingPeriodInDays, claims.Subject, data.TakeoverAllowedAfter)
+		seriesID, err := backendApiClient.ScheduleNotificationSeries(notifications)
 		if err != nil {
 			return err
 		}
 
-		return c.NoContent(http.StatusOK)
+		data.NotificationSeriesID = seriesID
+		err = a.repo.UpsertUser(user)
+		if err != nil {
+			return err
+		}
+
+		return c.JSON(http.StatusOK, output{data.TakeoverAllowedAfter})
 	}
 }
 
-func (a *Api) HandleEmergencyAccessTakeoverRequest() echo.HandlerFunc {
-	type input struct {
-		GrantorEmail string `json:"grantor_email" validate:"required,email"`
-	}
+func (a *Api) HandleEmergencyContactTakeoverRequest() echo.HandlerFunc {
 	type output struct {
-		Wallets []models.Wallet
+		Wallets []models.Wallet `json:"wallets"`
 	}
 	return func(c echo.Context) error {
-		var in input
-		if err := c.Bind(&in); err != nil {
-			return err
-		}
-		if err := c.Validate(&in); err != nil {
-			return err
-		}
-
 		user := c.Get("user").(models.User)
-		data, ok := user.EmergencyAccessContacts[in.GrantorEmail]
+		claims := c.Get("claims").(common.EnclaveClaims)
+
+		data, ok := user.EmergencyAccessContacts[claims.Subject]
 		if !ok {
 			return echo.NewHTTPError(http.StatusNotFound)
 		}
@@ -198,8 +257,60 @@ func (a *Api) HandleEmergencyAccessTakeoverRequest() echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusBadRequest, "Waiting period is not yet over. Try again at a later time")
 		}
 
+		err := removeEmergencyContacts(user, claims.Subject, a.repo, a.signingKey.PrivateKey)
+		if err != nil {
+			return fmt.Errorf("failed to remove all emergency contacts %w", err)
+		}
+
 		return c.JSON(http.StatusOK, output{
 			Wallets: user.Wallets,
 		})
 	}
+}
+
+func createScheduledNotifications(waitingPeriodInDays uint64, contactEmail string, takeoverAllowedAfter int64) []models.ScheduledNotification {
+	now := time.Now()
+	takeoverTime := time.Unix(takeoverAllowedAfter, 0)
+
+	notifications := make([]models.ScheduledNotification, int(math.Max(1, float64(waitingPeriodInDays))))
+	notifications[0] = models.ScheduledNotification{
+		SendAfter: now.Unix(),
+		Title:     "Emergency Access has been requested",
+		Body: fmt.Sprintf(
+			"%s has requested emergency access to your account. If you don't deny this request before %s, your account may be taken over.",
+			contactEmail,
+			takeoverTime.Format(time.RFC1123Z),
+		),
+	}
+
+	for i := 1; i < int(waitingPeriodInDays); i++ {
+		notifications[i] = models.ScheduledNotification{
+			SendAfter: now.Add(time.Duration(i) * 24 * time.Hour).Unix(),
+			Title:     "Emergency Access is pending",
+			Body:      fmt.Sprintf("Your account may be taken over by %s on %s. Deny this request on https://elonwallet.io/emergency-access before it is too late.", contactEmail, takeoverTime.Format(time.RFC1123Z)),
+		}
+	}
+
+	return notifications
+}
+
+func removeEmergencyContacts(user models.User, subject string, repo common.Repository, sk ed25519.PrivateKey) error {
+	for _, contact := range user.EmergencyAccessContacts {
+		if contact.Email == subject {
+			continue
+		}
+
+		enclaveApiClient, err := common.NewEnclaveApiClient(contact.EnclaveURL, user, sk)
+		if err != nil {
+			return fmt.Errorf("failed to create enclave api client: %w", err)
+		}
+
+		err = enclaveApiClient.RemoveEmergencyAccessGrant()
+		if err != nil {
+			return fmt.Errorf("failed to remove emergency contact: %w", err)
+		}
+	}
+
+	user.EmergencyAccessContacts = make(map[string]*models.EmergencyAccessContact, 0)
+	return repo.UpsertUser(user)
 }

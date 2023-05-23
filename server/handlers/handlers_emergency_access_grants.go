@@ -10,18 +10,7 @@ import (
 )
 
 func (a *Api) HandleEmergencyAccessGrantInvitation() echo.HandlerFunc {
-	type input struct {
-		WaitingPeriodInDays uint64 `json:"waiting_period_in_days" validate:"required"`
-	}
 	return func(c echo.Context) error {
-		var in input
-		if err := c.Bind(&in); err != nil {
-			return err
-		}
-		if err := c.Validate(&in); err != nil {
-			return err
-		}
-
 		user := c.Get("user").(models.User)
 		claims := c.Get("claims").(common.EnclaveClaims)
 
@@ -34,22 +23,11 @@ func (a *Api) HandleEmergencyAccessGrantInvitation() echo.HandlerFunc {
 			return err
 		}
 
-		user.EmergencyAccessGrants[claims.Subject] = &models.EmergencyAccessData{
-			Email:                claims.Subject,
-			EnclaveURL:           enclaveURL,
-			HasAccepted:          false,
-			HasRequestedTakeover: false,
-			WaitingPeriodInDays:  in.WaitingPeriodInDays,
-			TakeoverAllowedAfter: 0,
+		user.EmergencyAccessGrants[claims.Subject] = &models.EmergencyAccessGrant{
+			Email:      claims.Subject,
+			EnclaveURL: enclaveURL,
 		}
 		err = a.repo.UpsertUser(user)
-		if err != nil {
-			return err
-		}
-
-		title := "Emergency Access Invitation received"
-		body := fmt.Sprintf("You have received a pending invitation to be %s emergency contact. Visit https://elonwallet.io/emergency-access to review it.", claims.Subject)
-		err = backendApiClient.SendEmail(user.Email, title, body)
 		if err != nil {
 			return err
 		}
@@ -60,12 +38,12 @@ func (a *Api) HandleEmergencyAccessGrantInvitation() echo.HandlerFunc {
 
 func (a *Api) HandleGetEmergencyAccessGrants() echo.HandlerFunc {
 	type output struct {
-		EmergencyAccessGrants []models.EmergencyAccessData `json:"emergency_access_grants"`
+		EmergencyAccessGrants []models.EmergencyAccessGrant `json:"emergency_access_grants"`
 	}
 	return func(c echo.Context) error {
 		user := c.Get("user").(models.User)
 
-		grants := make([]models.EmergencyAccessData, len(user.EmergencyAccessGrants))
+		grants := make([]models.EmergencyAccessGrant, len(user.EmergencyAccessGrants))
 		i := 0
 		for _, data := range user.EmergencyAccessGrants {
 			grants[i] = *data
@@ -103,8 +81,12 @@ func (a *Api) HandleRespondEmergencyAccessGrantInvitation() echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusBadRequest, "Invitation has already been accepted")
 		}
 
-		enclaveApiClient := common.NewEnclaveApiClient(data.EnclaveURL)
-		err := enclaveApiClient.SendEmergencyAccessInvitationResponse(in.Accept)
+		enclaveApiClient, err := common.NewEnclaveApiClient(data.EnclaveURL, user, a.signingKey.PrivateKey)
+		if err != nil {
+			return fmt.Errorf("failed to create enclave api client: %w", err)
+		}
+
+		err = enclaveApiClient.RespondEmergencyAccessInvitation(in.Accept)
 		if err != nil {
 			return err
 		}
@@ -149,14 +131,18 @@ func (a *Api) HandleRequestEmergencyAccess() echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusBadRequest, "Takeover has already been requested")
 		}
 
-		enclaveApiClient := common.NewEnclaveApiClient(data.EnclaveURL)
-		err := enclaveApiClient.SendEmergencyAccessRequest()
+		enclaveApiClient, err := common.NewEnclaveApiClient(data.EnclaveURL, user, a.signingKey.PrivateKey)
+		if err != nil {
+			return fmt.Errorf("failed to create enclave api client: %w", err)
+		}
+
+		takeoverAllowedAfter, err := enclaveApiClient.RequestEmergencyAccess()
 		if err != nil {
 			return err
 		}
 
 		data.HasRequestedTakeover = true
-		data.TakeoverAllowedAfter = time.Now().Add(time.Duration(data.WaitingPeriodInDays) * 24 * time.Hour).Unix()
+		data.TakeoverAllowedAfter = takeoverAllowedAfter
 		err = a.repo.UpsertUser(user)
 		if err != nil {
 			return err
@@ -166,7 +152,7 @@ func (a *Api) HandleRequestEmergencyAccess() echo.HandlerFunc {
 	}
 }
 
-func (a *Api) HandleEmergencyAccessGrantRevocation() echo.HandlerFunc {
+func (a *Api) HandleEmergencyAccessGrantRemoval() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		user := c.Get("user").(models.User)
 		claims := c.Get("claims").(common.EnclaveClaims)
@@ -178,17 +164,6 @@ func (a *Api) HandleEmergencyAccessGrantRevocation() echo.HandlerFunc {
 
 		delete(user.EmergencyAccessGrants, claims.Subject)
 		err := a.repo.UpsertUser(user)
-		if err != nil {
-			return err
-		}
-
-		backendApiClient, err := common.NewBackendApiClient(a.cfg.BackendURL, user, a.signingKey.PrivateKey)
-		if err != nil {
-			return fmt.Errorf("failed to create backend api client: %w", err)
-		}
-		title := "Emergency Access Grant was revoked"
-		body := fmt.Sprintf("You are no longer registered as an emergency contact for %s", claims.Subject)
-		err = backendApiClient.SendEmail(user.Email, title, body)
 		if err != nil {
 			return err
 		}
@@ -207,20 +182,21 @@ func (a *Api) HandleEmergencyAccessRequestDenial() echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusNotFound)
 		}
 
-		data.HasRequestedTakeover = false
-		data.TakeoverAllowedAfter = 0
-		err := a.repo.UpsertUser(user)
-		if err != nil {
-			return err
-		}
-
 		backendApiClient, err := common.NewBackendApiClient(a.cfg.BackendURL, user, a.signingKey.PrivateKey)
 		if err != nil {
 			return fmt.Errorf("failed to create backend api client: %w", err)
 		}
+
 		title := "Emergency Access Request was denied"
-		body := fmt.Sprintf("Your pending request to takeover the wallets of %s has been denied by the owner", claims.Subject)
-		err = backendApiClient.SendEmail(user.Email, title, body)
+		body := fmt.Sprintf("Your pending request to takeover the account of %s has been denied", claims.Subject)
+		err = backendApiClient.SendNotification(title, body)
+		if err != nil {
+			return err
+		}
+
+		data.HasRequestedTakeover = false
+		data.TakeoverAllowedAfter = 0
+		err = a.repo.UpsertUser(user)
 		if err != nil {
 			return err
 		}
@@ -248,8 +224,18 @@ func (a *Api) HandleRequestEmergencyAccessTakeover() echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusNotFound)
 		}
 
-		enclaveApiClient := common.NewEnclaveApiClient(data.EnclaveURL)
-		wallets, err := enclaveApiClient.SendEmergencyAccessTakeoverRequest()
+		if !data.HasRequestedTakeover {
+			return echo.NewHTTPError(http.StatusBadRequest, "Emergency access must be requested first")
+		} else if time.Now().Before(time.Unix(data.TakeoverAllowedAfter, 0)) {
+			return echo.NewHTTPError(http.StatusBadRequest, "Waiting period is not yet over. Try again at a later time")
+		}
+
+		enclaveApiClient, err := common.NewEnclaveApiClient(data.EnclaveURL, user, a.signingKey.PrivateKey)
+		if err != nil {
+			return fmt.Errorf("failed to create enclave api client: %w", err)
+		}
+
+		wallets, err := enclaveApiClient.RequestEmergencyAccessTakeover()
 		if err != nil {
 			return err
 		}

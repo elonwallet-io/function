@@ -9,8 +9,11 @@ import (
 )
 
 const (
-	Enclave = "elonwallet-enclave"
-	Backend = "elonwallet-backend"
+	Enclave               = "elonwallet-enclave"
+	Backend               = "elonwallet-backend"
+	ScopeUser             = "user"
+	ScopeEnclave          = "enclave"
+	ScopeCreateCredential = "create-credential"
 )
 
 type BackendClaims struct {
@@ -43,36 +46,16 @@ func CreateBackendJWT(user models.User, scope string, sk ed25519.PrivateKey) (st
 	return token.SignedString(sk)
 }
 
-func CreateEnclaveJWT(user models.User, currentCredential string, sk ed25519.PrivateKey) (string, error) {
+func CreateEnclaveJWT(user models.User, scope, credential string, sk ed25519.PrivateKey) (string, error) {
 	now := time.Now()
 	claims := EnclaveClaims{
-		"all",
-		currentCredential,
+		scope,
+		credential,
 		jwt.RegisteredClaims{
 			Issuer:    Enclave,
 			Subject:   user.Email,
 			Audience:  []string{Enclave},
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour * 24)),
-			NotBefore: jwt.NewNumericDate(now),
-			IssuedAt:  jwt.NewNumericDate(now),
-		},
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
-
-	return token.SignedString(sk)
-}
-
-func CreateCredentialEnclaveJWT(user models.User, sk ed25519.PrivateKey) (string, error) {
-	now := time.Now()
-	claims := EnclaveClaims{
-		"create-credential",
-		"",
-		jwt.RegisteredClaims{
-			Issuer:    Enclave,
-			Subject:   user.Email,
-			Audience:  []string{Enclave},
-			ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute * 15)),
 			NotBefore: jwt.NewNumericDate(now),
 			IssuedAt:  jwt.NewNumericDate(now),
 		},

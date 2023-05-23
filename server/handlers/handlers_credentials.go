@@ -8,7 +8,7 @@ import (
 	"net/http"
 )
 
-func (a *Api) CreateCredentialInitialize() echo.HandlerFunc {
+func (a *Api) HandleCreateCredentialInitialize() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		user := c.Get("user").(models.User)
 
@@ -29,7 +29,7 @@ func (a *Api) CreateCredentialInitialize() echo.HandlerFunc {
 	}
 }
 
-func (a *Api) CreateCredentialFinalize() echo.HandlerFunc {
+func (a *Api) HandleCreateCredentialFinalize() echo.HandlerFunc {
 	type input struct {
 		CredentialName   string                              `json:"name" validate:"required,alphanum"`
 		CreationResponse protocol.CredentialCreationResponse `json:"creation_response"`
@@ -76,7 +76,7 @@ func (a *Api) CreateCredentialFinalize() echo.HandlerFunc {
 	}
 }
 
-func (a *Api) RemoveCredential() echo.HandlerFunc {
+func (a *Api) HandleRemoveCredential() echo.HandlerFunc {
 	type input struct {
 		CredentialName string `param:"name" validate:"required,alphanum"`
 	}
@@ -94,7 +94,7 @@ func (a *Api) RemoveCredential() echo.HandlerFunc {
 
 		_, ok := user.WebauthnData.Credentials[in.CredentialName]
 		if !ok {
-			return echo.NewHTTPError(http.StatusNotFound, "Credential does not exist")
+			return echo.NewHTTPError(http.StatusNotFound)
 		}
 
 		if claims.Credential == in.CredentialName {
@@ -111,7 +111,7 @@ func (a *Api) RemoveCredential() echo.HandlerFunc {
 	}
 }
 
-func (a *Api) GetCredentials() echo.HandlerFunc {
+func (a *Api) HandleGetCredentials() echo.HandlerFunc {
 	type credential struct {
 		Name          string `json:"name"`
 		CurrentlyUsed bool   `json:"currently_used"`

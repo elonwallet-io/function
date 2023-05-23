@@ -9,7 +9,7 @@ import (
 	"net/http"
 )
 
-func (a *Api) SignPersonal() echo.HandlerFunc {
+func (a *Api) HandleSignPersonal() echo.HandlerFunc {
 	type input struct {
 		Message string `json:"message" validate:"required"`
 		From    string `json:"from" validate:"required,ethereum_address"`
@@ -49,7 +49,7 @@ func (a *Api) SignPersonal() echo.HandlerFunc {
 	}
 }
 
-func (a *Api) SignTypedData() echo.HandlerFunc {
+func (a *Api) HandleSignTypedData() echo.HandlerFunc {
 	type input struct {
 		Data apitypes.TypedData `json:"typed_data" validate:"required"`
 		From string             `json:"from" validate:"required,ethereum_address"`
