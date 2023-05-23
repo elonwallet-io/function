@@ -54,7 +54,7 @@ func (s *Server) registerRoutes() error {
 	s.echo.GET("/emergency-access/contacts/request-takeover", api.HandleEmergencyContactTakeoverRequest(), customMiddleware.CheckEnclaveAuthentication(s.repo, s.cfg))
 	s.echo.POST("emergency-access/contacts/:email/deny-access", api.HandleDenyEmergencyContactAccessRequest(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey, common.ScopeUser))
 
-	s.echo.POST("/emergency-access/grants", api.HandleEmergencyAccessGrantInvitation(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey, common.ScopeUser))
+	s.echo.POST("/emergency-access/grants", api.HandleEmergencyAccessGrantInvitation(), customMiddleware.CheckEnclaveAuthentication(s.repo, s.cfg))
 	s.echo.GET("/emergency-access/grants", api.HandleGetEmergencyAccessGrants(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey, common.ScopeUser))
 	s.echo.POST("/emergency-access/grants/respond-invitation", api.HandleRespondEmergencyAccessGrantInvitation(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey, common.ScopeUser))
 	s.echo.POST("/emergency-access/grants/request-access", api.HandleRequestEmergencyAccess(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey, common.ScopeUser))
