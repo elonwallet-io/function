@@ -63,7 +63,7 @@ func CheckEnclaveAuthentication(repo common.Repository, cfg config.Config) echo.
 		return func(c echo.Context) error {
 			bearer := c.Request().Header.Get("Authorization")
 			if len(bearer) < 8 {
-				return echo.NewHTTPError(http.StatusUnauthorized, "Missing or invalid session")
+				return echo.NewHTTPError(http.StatusUnauthorized, invalidSession)
 			}
 
 			user, err := repo.GetUser()
@@ -91,7 +91,7 @@ func CheckEnclaveAuthentication(repo common.Repository, cfg config.Config) echo.
 func frontendAuth(c echo.Context, repo common.Repository, pk ed25519.PublicKey, allowedScopes []string) (models.User, common.EnclaveClaims, error) {
 	cookie, err := c.Request().Cookie("session")
 	if err != nil {
-		return models.User{}, common.EnclaveClaims{}, echo.NewHTTPError(http.StatusUnauthorized, "Missing session cookie")
+		return models.User{}, common.EnclaveClaims{}, echo.NewHTTPError(http.StatusUnauthorized, invalidSession)
 	}
 
 	user, err := repo.GetUser()

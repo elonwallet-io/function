@@ -149,3 +149,27 @@ func (b *BackendApiClient) DeleteNotificationSeries(seriesID string) error {
 
 	return nil
 }
+
+func (b *BackendApiClient) DeleteUser(authorizationJWT string) error {
+	backendURL := fmt.Sprintf("%s/users", b.url)
+
+	req, err := http.NewRequest(http.MethodDelete, backendURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to instantiate request: %w", err)
+	}
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", authorizationJWT))
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to make request: %w", err)
+	}
+	defer func() {
+		_ = res.Body.Close()
+	}()
+
+	if res.StatusCode < 200 || res.StatusCode > 299 {
+		return fmt.Errorf("received error status code: %d", res.StatusCode)
+	}
+
+	return nil
+}

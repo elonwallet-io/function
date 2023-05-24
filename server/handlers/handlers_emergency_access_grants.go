@@ -176,13 +176,32 @@ func (a *Api) HandleEmergencyAccessGrantRemoval() echo.HandlerFunc {
 		user := c.Get("user").(models.User)
 		claims := c.Get("claims").(common.EnclaveClaims)
 
-		_, ok := user.EmergencyAccessGrants[claims.Subject]
+		data, ok := user.EmergencyAccessGrants[claims.Subject]
 		if !ok {
 			return echo.NewHTTPError(http.StatusNotFound)
 		}
 
+		backendApiClient, err := common.NewBackendApiClient(a.cfg.BackendURL, user, a.signingKey.PrivateKey)
+		if err != nil {
+			return fmt.Errorf("failed to create backend api client: %w", err)
+		}
+
+		title := "Emergency Access Grant revoked"
+		body := fmt.Sprintf("Your emergency access grant for the account of %s has been revoked", claims.Subject)
+		err = backendApiClient.SendNotification(title, body)
+		if err != nil {
+			return err
+		}
+
+		if data.HasRequestedTakeover && data.NotificationSeriesID != "" {
+			err = backendApiClient.DeleteNotificationSeries(data.NotificationSeriesID)
+			if err != nil {
+				return fmt.Errorf("failed to delete scheduled notifications: %w", err)
+			}
+		}
+
 		delete(user.EmergencyAccessGrants, claims.Subject)
-		err := a.repo.UpsertUser(user)
+		err = a.repo.UpsertUser(user)
 		if err != nil {
 			return err
 		}
@@ -199,6 +218,10 @@ func (a *Api) HandleEmergencyAccessRequestDenial() echo.HandlerFunc {
 		data, ok := user.EmergencyAccessGrants[claims.Subject]
 		if !ok {
 			return echo.NewHTTPError(http.StatusNotFound)
+		}
+
+		if !data.HasRequestedTakeover {
+			return echo.NewHTTPError(http.StatusBadRequest, "Takeover has not been requested")
 		}
 
 		backendApiClient, err := common.NewBackendApiClient(a.cfg.BackendURL, user, a.signingKey.PrivateKey)
@@ -260,7 +283,7 @@ func (a *Api) HandleRequestEmergencyAccessTakeover() echo.HandlerFunc {
 			return fmt.Errorf("failed to create enclave api client: %w", err)
 		}
 
-		wallets, err := enclaveApiClient.RequestEmergencyAccessTakeover()
+		wallets, enclaveJWT, err := enclaveApiClient.RequestEmergencyAccessTakeover()
 		if err != nil {
 			return err
 		}
@@ -271,6 +294,13 @@ func (a *Api) HandleRequestEmergencyAccessTakeover() echo.HandlerFunc {
 			user.Wallets = append(user.Wallets, wallet)
 		}
 
+		backendApiClient, _ := common.NewBackendApiClient(a.cfg.BackendURL, models.User{}, nil)
+		err = backendApiClient.DeleteUser(enclaveJWT)
+		if err != nil {
+			return fmt.Errorf("failed to delete enclave of emergency access grantor: %w", err)
+		}
+
+		delete(user.EmergencyAccessGrants, in.GrantorEmail)
 		err = a.repo.UpsertUser(user)
 		if err != nil {
 			return err

@@ -17,7 +17,7 @@ func NewEnclaveApiClient(url string, user models.User, sk ed25519.PrivateKey) (E
 	var jwt string
 	if sk != nil {
 		var err error
-		jwt, err = CreateBackendJWT(user, ScopeEnclave, sk)
+		jwt, err = CreateEnclaveJWT(user, ScopeEnclave, "", sk)
 		if err != nil {
 			return EnclaveApiClient{}, fmt.Errorf("failed to create jwt: %w", err)
 		}
@@ -55,10 +55,19 @@ func (e *EnclaveApiClient) InviteEmergencyAccessContact() error {
 
 func (e *EnclaveApiClient) RequestEmergencyAccess() (int64, error) {
 	enclaveURL := fmt.Sprintf("%s/emergency-access/contacts/request-access", e.url)
-	res, err := http.Get(enclaveURL)
+	req, err := http.NewRequest(http.MethodGet, enclaveURL, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to instantiate request: %w", err)
+	}
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", e.jwt))
+
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("failed to make request: %w", err)
 	}
+	defer func() {
+		_ = res.Body.Close()
+	}()
 
 	if res.StatusCode < 200 || res.StatusCode > 299 {
 		return 0, fmt.Errorf("received error status code: %d", res.StatusCode)
@@ -76,26 +85,36 @@ func (e *EnclaveApiClient) RequestEmergencyAccess() (int64, error) {
 	return resp.TakeoverAllowedAfter, nil
 }
 
-func (e *EnclaveApiClient) RequestEmergencyAccessTakeover() ([]models.Wallet, error) {
-	enclaveURL := fmt.Sprintf("%s/emergency-access/contacts/request-access", e.url)
-	res, err := http.Get(enclaveURL)
+func (e *EnclaveApiClient) RequestEmergencyAccessTakeover() ([]models.Wallet, string, error) {
+	enclaveURL := fmt.Sprintf("%s/emergency-access/contacts/request-takeover", e.url)
+	req, err := http.NewRequest(http.MethodGet, enclaveURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %w", err)
+		return nil, "", fmt.Errorf("failed to instantiate request: %w", err)
 	}
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", e.jwt))
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to make request: %w", err)
+	}
+	defer func() {
+		_ = res.Body.Close()
+	}()
 
 	if res.StatusCode < 200 || res.StatusCode > 299 {
-		return nil, fmt.Errorf("received error status code: %d", res.StatusCode)
+		return nil, "", fmt.Errorf("received error status code: %d", res.StatusCode)
 	}
 
 	type response struct {
-		Wallets []models.Wallet
+		JWT     string          `json:"jwt"`
+		Wallets []models.Wallet `json:"wallets"`
 	}
 
 	var in response
 	if err := json.NewDecoder(res.Body).Decode(&in); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		return nil, "", fmt.Errorf("failed to decode response: %w", err)
 	}
-	return in.Wallets, nil
+	return in.Wallets, in.JWT, nil
 }
 
 func (e *EnclaveApiClient) RespondEmergencyAccessInvitation(accept bool) error {
