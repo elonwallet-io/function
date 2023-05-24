@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-func (a *Api) GetWallets() echo.HandlerFunc {
+func (a *Api) HandleGetWallets() echo.HandlerFunc {
 	type redactedWallet struct {
 		Name    string `json:"name"`
 		Address string `json:"address"`
@@ -33,7 +33,7 @@ func (a *Api) GetWallets() echo.HandlerFunc {
 	}
 }
 
-func (a *Api) CreateWallet() echo.HandlerFunc {
+func (a *Api) HandleCreateWallet() echo.HandlerFunc {
 	type input struct {
 		Name   string `json:"name" validate:"required,alphanum"`
 		Public bool   `json:"public"`

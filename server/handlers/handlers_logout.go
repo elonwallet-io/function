@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func (a *Api) Logout() echo.HandlerFunc {
+func (a *Api) HandleLogout() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		c.SetCookie(&http.Cookie{
 			Name:     "session",

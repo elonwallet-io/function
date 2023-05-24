@@ -1,12 +1,12 @@
 package common
 
 import (
-	"bytes"
 	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"github.com/Leantar/elonwallet-function/models"
 	"net/http"
+	"net/url"
 )
 
 type BackendApiClient struct {
@@ -15,9 +15,13 @@ type BackendApiClient struct {
 }
 
 func NewBackendApiClient(url string, user models.User, sk ed25519.PrivateKey) (BackendApiClient, error) {
-	jwt, err := CreateBackendJWT(user, "enclave", sk)
-	if err != nil {
-		return BackendApiClient{}, fmt.Errorf("failed to create jwt: %w", err)
+	var jwt string
+	if sk != nil {
+		var err error
+		jwt, err = CreateBackendJWT(user, ScopeEnclave, sk)
+		if err != nil {
+			return BackendApiClient{}, fmt.Errorf("failed to create jwt: %w", err)
+		}
 	}
 
 	return BackendApiClient{
@@ -27,7 +31,7 @@ func NewBackendApiClient(url string, user models.User, sk ed25519.PrivateKey) (B
 }
 
 func (b *BackendApiClient) PublishWalletInitialize(wallet models.Wallet) (challenge string, err error) {
-	url := fmt.Sprintf("%s/users/my/wallets/initialize", b.url)
+	backendURL := fmt.Sprintf("%s/users/my/wallets/initialize", b.url)
 	type payload struct {
 		Address string `json:"address"`
 	}
@@ -37,7 +41,7 @@ func (b *BackendApiClient) PublishWalletInitialize(wallet models.Wallet) (challe
 	}
 
 	var out response
-	err = b.doPostRequest(url, payload{wallet.Address}, &out)
+	err = doPostRequestWithBearer(backendURL, payload{wallet.Address}, &out, b.jwt)
 	if err != nil {
 		return "", err
 	}
@@ -46,7 +50,7 @@ func (b *BackendApiClient) PublishWalletInitialize(wallet models.Wallet) (challe
 }
 
 func (b *BackendApiClient) PublishWalletFinalize(wallet models.Wallet, signature string) error {
-	url := fmt.Sprintf("%s/users/my/wallets/finalize", b.url)
+	backendURL := fmt.Sprintf("%s/users/my/wallets/finalize", b.url)
 	type payload struct {
 		Name      string `json:"name"`
 		Address   string `json:"address"`
@@ -59,21 +63,76 @@ func (b *BackendApiClient) PublishWalletFinalize(wallet models.Wallet, signature
 		Signature: signature,
 	}
 
-	return b.doPostRequest(url, p, nil)
+	return doPostRequestWithBearer(backendURL, p, nil, b.jwt)
 }
 
-func (b *BackendApiClient) doPostRequest(url string, payload any, out any) error {
-	body, err := json.Marshal(payload)
+func (b *BackendApiClient) GetEnclaveURL(email string) (string, error) {
+	escapedEmail := url.QueryEscape(email)
+	res, err := http.Get(fmt.Sprintf("%s/users/%s/enclave-url?questioner=enclave", b.url, escapedEmail))
 	if err != nil {
-		return fmt.Errorf("failed to marshal json: %w", err)
+		return "", fmt.Errorf("failed to make request: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(body))
+	if res.StatusCode < 200 || res.StatusCode > 299 {
+		return "", fmt.Errorf("received error status code: %d", res.StatusCode)
+	}
+
+	type input struct {
+		EnclaveURL string `json:"enclave_url"`
+	}
+
+	var in input
+	if err := json.NewDecoder(res.Body).Decode(&in); err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
+	}
+	return in.EnclaveURL, nil
+}
+
+func (b *BackendApiClient) SendNotification(title, body string) error {
+	backendURL := fmt.Sprintf("%s/notifications", b.url)
+	type payload struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+	}
+
+	p := payload{
+		Title: title,
+		Body:  body,
+	}
+
+	return doPostRequestWithBearer(backendURL, p, nil, b.jwt)
+}
+
+func (b *BackendApiClient) ScheduleNotificationSeries(notifications []models.ScheduledNotification) (string, error) {
+	backendURL := fmt.Sprintf("%s/notifications/series", b.url)
+	type payload struct {
+		Notifications []models.ScheduledNotification `json:"notifications"`
+	}
+
+	p := payload{
+		Notifications: notifications,
+	}
+
+	type response struct {
+		SeriesID string `json:"series_id"`
+	}
+
+	var out response
+	err := doPostRequestWithBearer(backendURL, p, &out, b.jwt)
+	if err != nil {
+		return "", err
+	}
+
+	return out.SeriesID, nil
+}
+
+func (b *BackendApiClient) DeleteNotificationSeries(seriesID string) error {
+	backendURL := fmt.Sprintf("%s/notifications/series/%s", b.url, seriesID)
+
+	req, err := http.NewRequest(http.MethodDelete, backendURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to instantiate request: %w", err)
 	}
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Accept", "application/json")
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", b.jwt))
 
 	res, err := http.DefaultClient.Do(req)
@@ -84,14 +143,32 @@ func (b *BackendApiClient) doPostRequest(url string, payload any, out any) error
 		_ = res.Body.Close()
 	}()
 
-	if res.StatusCode != 200 && res.StatusCode != 201 {
+	if res.StatusCode < 200 || res.StatusCode > 299 {
 		return fmt.Errorf("received error status code: %d", res.StatusCode)
 	}
 
-	if out != nil {
-		if err := json.NewDecoder(res.Body).Decode(out); err != nil {
-			return fmt.Errorf("failed to decode response: %w", err)
-		}
+	return nil
+}
+
+func (b *BackendApiClient) DeleteUser(authorizationJWT string) error {
+	backendURL := fmt.Sprintf("%s/users", b.url)
+
+	req, err := http.NewRequest(http.MethodDelete, backendURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to instantiate request: %w", err)
+	}
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", authorizationJWT))
+
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to make request: %w", err)
+	}
+	defer func() {
+		_ = res.Body.Close()
+	}()
+
+	if res.StatusCode < 200 || res.StatusCode > 299 {
+		return fmt.Errorf("received error status code: %d", res.StatusCode)
 	}
 
 	return nil

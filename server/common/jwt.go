@@ -9,8 +9,11 @@ import (
 )
 
 const (
-	Enclave = "elonwallet-enclave"
-	Backend = "elonwallet-backend"
+	Enclave               = "elonwallet-enclave"
+	Backend               = "elonwallet-backend"
+	ScopeUser             = "user"
+	ScopeEnclave          = "enclave"
+	ScopeCreateCredential = "create-credential"
 )
 
 type BackendClaims struct {
@@ -43,11 +46,11 @@ func CreateBackendJWT(user models.User, scope string, sk ed25519.PrivateKey) (st
 	return token.SignedString(sk)
 }
 
-func CreateEnclaveJWT(user models.User, currentCredential string, sk ed25519.PrivateKey) (string, error) {
+func CreateEnclaveJWT(user models.User, scope, credential string, sk ed25519.PrivateKey) (string, error) {
 	now := time.Now()
 	claims := EnclaveClaims{
-		"all",
-		currentCredential,
+		scope,
+		credential,
 		jwt.RegisteredClaims{
 			Issuer:    Enclave,
 			Subject:   user.Email,
@@ -63,49 +66,22 @@ func CreateEnclaveJWT(user models.User, currentCredential string, sk ed25519.Pri
 	return token.SignedString(sk)
 }
 
-func CreateCredentialEnclaveJWT(user models.User, sk ed25519.PrivateKey) (string, error) {
-	now := time.Now()
-	claims := EnclaveClaims{
-		"create-credential",
-		"none",
-		jwt.RegisteredClaims{
-			Issuer:    Enclave,
-			Subject:   user.Email,
-			Audience:  []string{Enclave},
-			ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute * 15)),
-			NotBefore: jwt.NewNumericDate(now),
-			IssuedAt:  jwt.NewNumericDate(now),
-		},
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
-
-	return token.SignedString(sk)
-}
-
-func ValidateEnclaveJWT(tokenString, subject string, pk ed25519.PublicKey) (EnclaveClaims, error) {
+func ValidateJWT(tokenString string, keyFunc jwt.Keyfunc) (EnclaveClaims, error) {
 	parser := jwt.NewParser(
 		jwt.WithIssuedAt(),
 		jwt.WithValidMethods([]string{jwt.SigningMethodEdDSA.Alg()}),
 		jwt.WithAudience(Enclave),
 		jwt.WithIssuer(Enclave),
-		jwt.WithSubject(subject),
 	)
 
 	var claims EnclaveClaims
-	_, err := parser.ParseWithClaims(tokenString, &claims, func(token *jwt.Token) (interface{}, error) {
-		return pk, nil
-	})
+	_, err := parser.ParseWithClaims(tokenString, &claims, keyFunc)
 	if err != nil {
 		return EnclaveClaims{}, err
 	}
 
 	if claims.Scope == "" {
 		return EnclaveClaims{}, errors.New("scope is missing")
-	}
-
-	if claims.Credential == "" {
-		return EnclaveClaims{}, errors.New("credential claim is missing")
 	}
 
 	return claims, nil

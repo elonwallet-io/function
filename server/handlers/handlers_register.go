@@ -10,7 +10,7 @@ import (
 	"net/http"
 )
 
-func (a *Api) RegisterInitialize() echo.HandlerFunc {
+func (a *Api) HandleRegisterInitialize() echo.HandlerFunc {
 	type input struct {
 		Email string `query:"email" validate:"required,email"`
 	}
@@ -47,7 +47,7 @@ func (a *Api) RegisterInitialize() echo.HandlerFunc {
 	}
 }
 
-func (a *Api) RegisterFinalize() echo.HandlerFunc {
+func (a *Api) HandleRegisterFinalize() echo.HandlerFunc {
 	type input struct {
 		CredentialName   string                              `json:"name" validate:"required,alphanum"`
 		CreationResponse protocol.CredentialCreationResponse `json:"creation_response"`

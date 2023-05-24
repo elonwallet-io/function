@@ -8,7 +8,7 @@ import (
 	"net/http"
 )
 
-func (a *Api) EstimateFees() echo.HandlerFunc {
+func (a *Api) HandleEstimateFees() echo.HandlerFunc {
 	type input struct {
 		Chain string `query:"chain" validate:"required,hexadecimal"`
 	}

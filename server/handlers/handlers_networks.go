@@ -100,7 +100,7 @@ var networks = models.Networks{
 	},
 }
 
-func (a *Api) GetNetworks() echo.HandlerFunc {
+func (a *Api) HandleGetNetworks() echo.HandlerFunc {
 	type output struct {
 		Networks []models.Network `json:"networks"`
 	}

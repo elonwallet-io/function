@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func (a *Api) LoginInitialize() echo.HandlerFunc {
+func (a *Api) HandleLoginInitialize() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		user, err := a.repo.GetUser()
 		if err != nil {
@@ -28,7 +28,7 @@ func (a *Api) LoginInitialize() echo.HandlerFunc {
 	}
 }
 
-func (a *Api) LoginFinalize() echo.HandlerFunc {
+func (a *Api) HandleLoginFinalize() echo.HandlerFunc {
 	type output struct {
 		BackendJWT string `json:"backend_jwt"`
 	}
@@ -62,7 +62,7 @@ func (a *Api) LoginFinalize() echo.HandlerFunc {
 		}
 
 		//create an auth token to be used with the backend
-		jwtString, err := common.CreateBackendJWT(user, "user", a.signingKey.PrivateKey)
+		jwtString, err := common.CreateBackendJWT(user, common.ScopeUser, a.signingKey.PrivateKey)
 		if err != nil {
 			return fmt.Errorf("failed to create jwt: %w", err)
 		}
@@ -80,7 +80,7 @@ func createSessionCookie(user models.User, currentCredential *webauthn.Credentia
 		}
 	}
 
-	jwt, err := common.CreateEnclaveJWT(user, currentCredentialName, sk)
+	jwt, err := common.CreateEnclaveJWT(user, common.ScopeUser, currentCredentialName, sk)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create jwt: %w", err)
 	}
