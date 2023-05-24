@@ -31,9 +31,62 @@ type transactionParams struct {
 	GasPrice string `json:"gas_price" validate:"omitempty,number"` //optional as per WalletConnect definition
 	Value    string `json:"value" validate:"omitempty,number"`     //optional as per WalletConnect definition
 	Nonce    string `json:"nonce" validate:"omitempty,number"`     //optional as per WalletConnect definition
+	Legacy   bool   `json:"legacy"`                                //Sets the eth transaction type to either legacy tx or dynamic fee tx
 }
 
 func createTransaction(params transactionParams, network models.Network, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
+	if params.Legacy {
+		return createLegacyTransaction(params, client, ctx)
+	} else {
+		return createDynamicFeeTransaction(params, network, client, ctx)
+	}
+}
+
+func createLegacyTransaction(params transactionParams, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
+	value, err := parseValue(params.Value)
+	if err != nil {
+		return nil, err
+	}
+
+	from := common.HexToAddress(params.From)
+	to := common.HexToAddress(params.To)
+
+	feeCap, err := parseFeeCap(params.GasPrice, client, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	nonce, err := parseNonce(params.Nonce, from, client, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := parseData(params.Data)
+	if err != nil {
+		return nil, err
+	}
+
+	legTx := &types.LegacyTx{
+		Nonce:    nonce,
+		GasPrice: feeCap,
+		To:       &to,
+		Value:    value,
+		Data:     data,
+	}
+
+	gas, err := parseLegacyGas(params.Gas, from, legTx, client, ctx)
+	if err != nil {
+		return nil, err
+	}
+	legTx.Gas = gas
+
+	log.Debug().Msgf("tx: %v", legTx)
+
+	tx := types.NewTx(legTx)
+	return tx, nil
+}
+
+func createDynamicFeeTransaction(params transactionParams, network models.Network, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
 	value, err := parseValue(params.Value)
 	if err != nil {
 		return nil, err
@@ -168,17 +221,48 @@ func parseGas(gas string, from common.Address, dynTx *types.DynamicFeeTx, client
 	return parsed, nil
 }
 
+func parseLegacyGas(gas string, from common.Address, tx *types.LegacyTx, client *ethclient.Client, ctx context.Context) (parsed uint64, err error) {
+	if gas != "" {
+		parsed, err = strconv.ParseUint(gas, 10, 64)
+		if err != nil {
+			return 0, echo.NewHTTPError(http.StatusBadRequest, "invalid gas").SetInternal(err)
+		}
+	} else {
+		parsed, err = client.EstimateGas(ctx, ethereum.CallMsg{
+			From:     from,
+			To:       tx.To,
+			GasPrice: tx.GasPrice,
+			Value:    tx.Value,
+			Data:     tx.Data,
+		})
+		if err != nil {
+			return 0, fmt.Errorf("failed to estimate gas: %w", err)
+		}
+	}
+
+	return parsed, nil
+}
+
 func hasSufficientBalance(tx *types.Transaction, from common.Address, client *ethclient.Client, ctx context.Context) (bool, error) {
 	balance, err := client.BalanceAt(ctx, from, nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to get current balance: %w", err)
 	}
 
-	maxFee := new(big.Int).Mul(tx.GasFeeCap(), new(big.Int).SetUint64(tx.Gas()))
-	total := new(big.Int).Add(tx.Value(), maxFee)
+	if tx.Type() == types.LegacyTxType {
+		maxFee := new(big.Int).Mul(tx.GasPrice(), new(big.Int).SetUint64(tx.Gas()))
+		total := new(big.Int).Add(tx.Value(), maxFee)
 
-	if balance.Cmp(total) == -1 {
-		return false, nil
+		if balance.Cmp(total) == -1 {
+			return false, nil
+		}
+	} else if tx.Type() == types.DynamicFeeTxType {
+		maxFee := new(big.Int).Mul(tx.GasFeeCap(), new(big.Int).SetUint64(tx.Gas()))
+		total := new(big.Int).Add(tx.Value(), maxFee)
+
+		if balance.Cmp(total) == -1 {
+			return false, nil
+		}
 	}
 
 	return true, nil
