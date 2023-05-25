@@ -28,7 +28,7 @@ func (a *Api) HandleEstimateFees() echo.HandlerFunc {
 
 		network, ok := networks.FindByChainIDHex(in.Chain)
 		if !ok {
-			return echo.NewHTTPError(http.StatusBadRequest, "network does not exist")
+			return echo.NewHTTPError(http.StatusBadRequest, "Network does not exist")
 		}
 
 		client, err := ethclient.DialContext(c.Request().Context(), network.RPC)

@@ -47,7 +47,7 @@ func (a *Api) HandleCreateCredentialFinalize() echo.HandlerFunc {
 
 		_, ok := user.WebauthnData.Credentials[in.CredentialName]
 		if ok {
-			return echo.NewHTTPError(http.StatusBadRequest, "a credential with this name already exists")
+			return echo.NewHTTPError(http.StatusBadRequest, "A credential with this name already exists")
 		}
 
 		session, ok := user.WebauthnData.Sessions[AddCredentialKey]

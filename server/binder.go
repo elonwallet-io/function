@@ -47,7 +47,7 @@ func (b *BinderWithURLDecoding) DecodeURLEncodedParams(i any) error {
 		val := field.String()
 		unescapedVal, err := url.QueryUnescape(val)
 		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, "invalid escape sequence").SetInternal(err)
+			return echo.NewHTTPError(http.StatusBadRequest, "Invalid escape sequence").SetInternal(err)
 		}
 
 		field.SetString(unescapedVal)
