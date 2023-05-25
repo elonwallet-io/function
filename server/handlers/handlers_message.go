@@ -31,7 +31,7 @@ func (a *Api) HandleSignPersonal() echo.HandlerFunc {
 
 		wallet, ok := user.Wallets.FindByAddress(in.From)
 		if !ok {
-			return echo.NewHTTPError(http.StatusBadRequest, "signing wallet does not exist")
+			return echo.NewHTTPError(http.StatusBadRequest, "Signing wallet does not exist")
 		}
 
 		privateKey, err := crypto.HexToECDSA(wallet.PrivateKeyHex)
@@ -71,7 +71,7 @@ func (a *Api) HandleSignTypedData() echo.HandlerFunc {
 
 		wallet, ok := user.Wallets.FindByAddress(in.From)
 		if !ok {
-			return echo.NewHTTPError(http.StatusBadRequest, "signing wallet does not exist")
+			return echo.NewHTTPError(http.StatusBadRequest, "Signing wallet does not exist")
 		}
 
 		privateKey, err := crypto.HexToECDSA(wallet.PrivateKeyHex)

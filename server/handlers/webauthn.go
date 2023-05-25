@@ -49,7 +49,7 @@ func (a *Api) loginInitialize(user models.User, sessionKey string) (*protocol.Cr
 func (a *Api) loginFinalize(user models.User, sessionKey string, response protocol.CredentialAssertionResponse) (*webauthn.Credential, error) {
 	session, ok := user.WebauthnData.Sessions[sessionKey]
 	if !ok {
-		return nil, echo.NewHTTPError(http.StatusBadRequest, "transaction must be initialized beforehand")
+		return nil, echo.NewHTTPError(http.StatusBadRequest, "Transaction must be initialized beforehand")
 	}
 	delete(user.WebauthnData.Sessions, sessionKey)
 

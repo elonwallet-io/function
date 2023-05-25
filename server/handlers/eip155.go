@@ -143,7 +143,7 @@ func parseValue(value string) (*big.Int, error) {
 		var ok bool
 		parsed, ok = new(big.Int).SetString(value, 10)
 		if !ok {
-			return nil, echo.NewHTTPError(http.StatusBadRequest, "value is not a valid number")
+			return nil, echo.NewHTTPError(http.StatusBadRequest, "Value is not a valid number")
 		}
 	} else {
 		parsed = new(big.Int).SetInt64(0)
@@ -169,7 +169,7 @@ func parseNonce(nonce string, from common.Address, client *ethclient.Client, ctx
 	if nonce != "" && nonce != "0" {
 		parsed, err = strconv.ParseUint(nonce, 10, 64)
 		if err != nil {
-			return 0, echo.NewHTTPError(http.StatusBadRequest, "invalid nonce value").SetInternal(err)
+			return 0, echo.NewHTTPError(http.StatusBadRequest, "Invalid nonce value").SetInternal(err)
 		}
 	} else {
 		parsed, err = client.PendingNonceAt(ctx, from)
@@ -186,7 +186,7 @@ func parseFeeCap(feeCap string, client *ethclient.Client, ctx context.Context) (
 		var ok bool
 		price, ok = new(big.Int).SetString(feeCap, 10)
 		if !ok {
-			return nil, echo.NewHTTPError(http.StatusBadRequest, "feeCap is not a valid number")
+			return nil, echo.NewHTTPError(http.StatusBadRequest, "FeeCap is not a valid number")
 		}
 	} else {
 		price, err = client.SuggestGasPrice(ctx)
@@ -202,7 +202,7 @@ func parseGas(gas string, from common.Address, dynTx *types.DynamicFeeTx, client
 	if gas != "" {
 		parsed, err = strconv.ParseUint(gas, 10, 64)
 		if err != nil {
-			return 0, echo.NewHTTPError(http.StatusBadRequest, "invalid gas").SetInternal(err)
+			return 0, echo.NewHTTPError(http.StatusBadRequest, "Invalid gas value").SetInternal(err)
 		}
 	} else {
 		parsed, err = client.EstimateGas(ctx, ethereum.CallMsg{
@@ -225,7 +225,7 @@ func parseLegacyGas(gas string, from common.Address, tx *types.LegacyTx, client 
 	if gas != "" {
 		parsed, err = strconv.ParseUint(gas, 10, 64)
 		if err != nil {
-			return 0, echo.NewHTTPError(http.StatusBadRequest, "invalid gas").SetInternal(err)
+			return 0, echo.NewHTTPError(http.StatusBadRequest, "Invalid gas value").SetInternal(err)
 		}
 	} else {
 		parsed, err = client.EstimateGas(ctx, ethereum.CallMsg{
@@ -322,7 +322,7 @@ func signTransaction(tx *types.Transaction, privateKeyHex string) (*types.Transa
 func createSignedTransaction(user models.User, params transactionParams, network models.Network, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
 	wallet, ok := user.Wallets.FindByAddress(params.From)
 	if !ok {
-		return nil, echo.NewHTTPError(http.StatusBadRequest, "sending wallet does not exist")
+		return nil, echo.NewHTTPError(http.StatusBadRequest, "Sending wallet does not exist")
 	}
 
 	tx, err := createTransaction(params, network, client, ctx)
