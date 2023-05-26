@@ -52,6 +52,9 @@ func (a *Api) HandleRegisterFinalize() echo.HandlerFunc {
 		CredentialName   string                              `json:"name" validate:"required,alphanum"`
 		CreationResponse protocol.CredentialCreationResponse `json:"creation_response"`
 	}
+	type output struct {
+		BackendJWT string `json:"backend_jwt"`
+	}
 	return func(c echo.Context) error {
 		var in input
 		if err := c.Bind(&in); err != nil {
@@ -94,6 +97,19 @@ func (a *Api) HandleRegisterFinalize() echo.HandlerFunc {
 			return err
 		}
 
-		return c.NoContent(http.StatusOK)
+		cookie, err := createSessionCookie(user, cred, a.signingKey.PrivateKey)
+		if err != nil {
+			return err
+		}
+
+		c.SetCookie(cookie)
+
+		//create an auth token to be used with the backend
+		jwtString, err := common.CreateBackendJWT(user, common.ScopeUser, a.signingKey.PrivateKey)
+		if err != nil {
+			return fmt.Errorf("failed to create jwt: %w", err)
+		}
+
+		return c.JSON(http.StatusOK, output{jwtString})
 	}
 }

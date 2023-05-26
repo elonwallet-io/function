@@ -49,17 +49,17 @@ func (a *Api) HandleLoginFinalize() echo.HandlerFunc {
 			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
 		}
 
+		err = a.repo.UpsertUser(user)
+		if err != nil {
+			return err
+		}
+
 		cookie, err := createSessionCookie(user, cred, a.signingKey.PrivateKey)
 		if err != nil {
 			return err
 		}
 
 		c.SetCookie(cookie)
-
-		err = a.repo.UpsertUser(user)
-		if err != nil {
-			return err
-		}
 
 		//create an auth token to be used with the backend
 		jwtString, err := common.CreateBackendJWT(user, common.ScopeUser, a.signingKey.PrivateKey)
