@@ -7,7 +7,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/labstack/echo/v4"
-	"github.com/rs/zerolog/log"
 	"net/http"
 )
 
@@ -54,7 +53,6 @@ func (a *Api) HandleSendTransactionFinalize() echo.HandlerFunc {
 		if !ok {
 			return echo.NewHTTPError(http.StatusBadRequest, "Network does not exist")
 		}
-		log.Error().Msgf("network is: %v", network)
 
 		client, err := ethclient.DialContext(c.Request().Context(), network.RPC)
 		if err != nil {
