@@ -17,76 +17,153 @@ import (
 	"github.com/rs/zerolog/log"
 	"math/big"
 	"net/http"
-	"strconv"
+	"regexp"
+	"strings"
 )
 
-var errInsufficientFunds = errors.New("insufficient funds for transaction")
+var (
+	errInsufficientFunds = errors.New("insufficient funds for transaction")
+	leadingZeroesRegex   = regexp.MustCompile("^0+")
+)
 
 type transactionParams struct {
-	Chain    string `json:"chain" validate:"required,hexadecimal"`
-	From     string `json:"from" validate:"required,ethereum_address"`
-	To       string `json:"to" validate:"required,ethereum_address"`
-	Data     string `json:"data"`
-	Gas      string `json:"gas" validate:"omitempty,number"`       //optional as per WalletConnect definition
-	GasPrice string `json:"gas_price" validate:"omitempty,number"` //optional as per WalletConnect definition
-	Value    string `json:"value" validate:"omitempty,number"`     //optional as per WalletConnect definition
-	Nonce    string `json:"nonce" validate:"omitempty,number"`     //optional as per WalletConnect definition
-	Legacy   bool   `json:"legacy"`                                //Sets the eth transaction type to either legacy tx or dynamic fee tx
+	Type                 string            `json:"type" validate:"required,oneof=0x1 0x2"`
+	Nonce                string            `json:"nonce" validate:"omitempty,hexadecimal"`
+	To                   string            `json:"to" validate:"required,ethereum_address"`
+	From                 string            `json:"from" validate:"required,ethereum_address"`
+	Gas                  string            `json:"gas" validate:"omitempty,hexadecimal"`
+	Value                string            `json:"value" validate:"omitempty,hexadecimal"`
+	Input                string            `json:"input"`
+	GasPrice             string            `json:"gasPrice" validate:"omitempty,hexadecimal"`
+	MaxPriorityFeePerGas string            `json:"maxPriorityFeePerGas" validate:"omitempty,hexadecimal"`
+	MaxFeePerGas         string            `json:"maxFeePerGas" validate:"omitempty,hexadecimal"`
+	AccessList           *types.AccessList `json:"accessList"`
+	ChainID              string            `json:"chainId" validate:"omitempty,hexadecimal"`
+}
+
+type parsedCommonParams struct {
+	Nonce uint64
+	To    common.Address
+	From  common.Address
+	Value *big.Int
+	Data  []byte
 }
 
 func createTransaction(params transactionParams, network models.Network, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
-	if params.Legacy {
-		return createLegacyTransaction(params, client, ctx)
+	if params.Type == "0x1" {
+		if params.AccessList != nil {
+			return createLegacyAccessListTransaction(params, client, ctx)
+		} else {
+			return createLegacyTransaction(params, client, ctx)
+		}
 	} else {
 		return createDynamicFeeTransaction(params, network, client, ctx)
 	}
 }
 
+func createLegacyAccessListTransaction(params transactionParams, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
+	commonParams, err := parseCommonParams(params, client, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	gasPrice, err := parseGasPrice(params.GasPrice, client, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tx := &types.AccessListTx{
+		Nonce:      commonParams.Nonce,
+		GasPrice:   gasPrice,
+		To:         &commonParams.To,
+		Value:      commonParams.Value,
+		Data:       commonParams.Data,
+		AccessList: *params.AccessList,
+	}
+
+	gas, err := parseGas(params.Gas, commonParams.From, types.NewTx(tx), client, ctx)
+	if err != nil {
+		return nil, err
+	}
+	tx.Gas = gas
+
+	log.Debug().Msgf("tx: %v", tx)
+
+	return types.NewTx(tx), nil
+}
+
 func createLegacyTransaction(params transactionParams, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
-	value, err := parseValue(params.Value)
+	commonParams, err := parseCommonParams(params, client, ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	from := common.HexToAddress(params.From)
-	to := common.HexToAddress(params.To)
-
-	feeCap, err := parseFeeCap(params.GasPrice, client, ctx)
+	gasPrice, err := parseGasPrice(params.GasPrice, client, ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	nonce, err := parseNonce(params.Nonce, from, client, ctx)
+	tx := &types.LegacyTx{
+		Nonce:    commonParams.Nonce,
+		GasPrice: gasPrice,
+		To:       &commonParams.To,
+		Value:    commonParams.Value,
+		Data:     commonParams.Data,
+	}
+
+	gas, err := parseGas(params.Gas, commonParams.From, types.NewTx(tx), client, ctx)
 	if err != nil {
 		return nil, err
 	}
+	tx.Gas = gas
 
-	data, err := parseData(params.Data)
-	if err != nil {
-		return nil, err
-	}
+	log.Debug().Msgf("tx: %v", tx)
 
-	legTx := &types.LegacyTx{
-		Nonce:    nonce,
-		GasPrice: feeCap,
-		To:       &to,
-		Value:    value,
-		Data:     data,
-	}
-
-	gas, err := parseLegacyGas(params.Gas, from, legTx, client, ctx)
-	if err != nil {
-		return nil, err
-	}
-	legTx.Gas = gas
-
-	log.Debug().Msgf("tx: %v", legTx)
-
-	tx := types.NewTx(legTx)
-	return tx, nil
+	return types.NewTx(tx), nil
 }
 
 func createDynamicFeeTransaction(params transactionParams, network models.Network, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
+	commonParams, err := parseCommonParams(params, client, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	feeCap, err := parseFeeCap(params.GasPrice, client, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tipCap, err := parseTipCap(params.MaxPriorityFeePerGas, client, ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	tx := &types.DynamicFeeTx{
+		ChainID:   new(big.Int).SetInt64(network.ChainID),
+		Nonce:     commonParams.Nonce,
+		GasFeeCap: feeCap,
+		GasTipCap: tipCap,
+		To:        &commonParams.To,
+		Value:     commonParams.Value,
+		Data:      commonParams.Data,
+	}
+
+	if params.AccessList != nil {
+		tx.AccessList = *params.AccessList
+	}
+
+	gas, err := parseGas(params.Gas, commonParams.From, types.NewTx(tx), client, ctx)
+	if err != nil {
+		return nil, err
+	}
+	tx.Gas = gas
+
+	log.Debug().Msgf("tx: %v", tx)
+
+	return types.NewTx(tx), nil
+}
+
+func parseCommonParams(params transactionParams, client *ethclient.Client, ctx context.Context) (*parsedCommonParams, error) {
 	value, err := parseValue(params.Value)
 	if err != nil {
 		return nil, err
@@ -95,145 +172,137 @@ func createDynamicFeeTransaction(params transactionParams, network models.Networ
 	from := common.HexToAddress(params.From)
 	to := common.HexToAddress(params.To)
 
-	feeCap, err := parseFeeCap(params.GasPrice, client, ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	nonce, err := parseNonce(params.Nonce, from, client, ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	tipCap, err := client.SuggestGasTipCap(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to suggest tipCap cap: %w", err)
-	}
-
-	data, err := parseData(params.Data)
+	data, err := parseData(params.Input)
 	if err != nil {
 		return nil, err
 	}
 
-	dynTx := &types.DynamicFeeTx{
-		ChainID:   new(big.Int).SetInt64(network.ChainID),
-		Nonce:     nonce,
-		GasFeeCap: feeCap,
-		GasTipCap: tipCap,
-		To:        &to,
-		Value:     value,
-		Data:      data,
-	}
-
-	gas, err := parseGas(params.Gas, from, dynTx, client, ctx)
-	if err != nil {
-		return nil, err
-	}
-	dynTx.Gas = gas
-
-	log.Debug().Msgf("tx: %v", dynTx)
-
-	tx := types.NewTx(dynTx)
-	return tx, nil
+	return &parsedCommonParams{
+		Nonce: nonce,
+		To:    to,
+		From:  from,
+		Value: value,
+		Data:  data,
+	}, nil
 }
 
-func parseValue(value string) (*big.Int, error) {
-	var parsed *big.Int
+func parseValue(value string) (parsed *big.Int, err error) {
 	if value != "" {
-		var ok bool
-		parsed, ok = new(big.Int).SetString(value, 10)
-		if !ok {
-			return nil, echo.NewHTTPError(http.StatusBadRequest, "Value is not a valid number")
+		value = replaceLeadingZeroesFromHexNumber(value)
+		parsed, err = hexutil.DecodeBig(value)
+		if err != nil {
+			err = echo.NewHTTPError(http.StatusBadRequest, "Value is invalid").SetInternal(err)
 		}
 	} else {
 		parsed = new(big.Int).SetInt64(0)
 	}
 
-	return parsed, nil
+	return
 }
 
-func parseData(hexData string) ([]byte, error) {
-	if len(hexData) == 0 {
+func parseData(data string) (parsed []byte, err error) {
+	if len(data) == 0 {
 		return make([]byte, 0), nil
 	}
 
-	data, err := hexutil.Decode(hexData)
+	parsed, err = hexutil.Decode(data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode data hex string: %w", err)
+		err = fmt.Errorf("failed to decode data hex string: %w", err)
 	}
 
-	return data, nil
+	return
 }
 
 func parseNonce(nonce string, from common.Address, client *ethclient.Client, ctx context.Context) (parsed uint64, err error) {
-	if nonce != "" && nonce != "0" {
-		parsed, err = strconv.ParseUint(nonce, 10, 64)
+	if nonce != "" {
+		nonce = replaceLeadingZeroesFromHexNumber(nonce)
+		parsed, err = hexutil.DecodeUint64(nonce)
 		if err != nil {
-			return 0, echo.NewHTTPError(http.StatusBadRequest, "Invalid nonce value").SetInternal(err)
+			err = echo.NewHTTPError(http.StatusBadRequest, "Nonce is invalid").SetInternal(err)
 		}
 	} else {
 		parsed, err = client.PendingNonceAt(ctx, from)
 		if err != nil {
-			return 0, fmt.Errorf("failed to get nonce: %w", err)
+			err = fmt.Errorf("failed to get nonce: %w", err)
 		}
 	}
 
-	return parsed, nil
+	return
 }
 
-func parseFeeCap(feeCap string, client *ethclient.Client, ctx context.Context) (price *big.Int, err error) {
+func parseGasPrice(gasPrice string, client *ethclient.Client, ctx context.Context) (parsed *big.Int, err error) {
+	if gasPrice != "" {
+		gasPrice = replaceLeadingZeroesFromHexNumber(gasPrice)
+		parsed, err = hexutil.DecodeBig(gasPrice)
+		if err != nil {
+			err = echo.NewHTTPError(http.StatusBadRequest, "GasPrice is invalid").SetInternal(err)
+		}
+	} else {
+		parsed, err = client.SuggestGasPrice(ctx)
+		if err != nil {
+			err = fmt.Errorf("failed to suggest gas price: %w", err)
+		}
+	}
+
+	return
+}
+
+func parseTipCap(tipCap string, client *ethclient.Client, ctx context.Context) (parsed *big.Int, err error) {
+	if tipCap != "" {
+		tipCap = replaceLeadingZeroesFromHexNumber(tipCap)
+		parsed, err = hexutil.DecodeBig(tipCap)
+		if err != nil {
+			err = echo.NewHTTPError(http.StatusBadRequest, "MaxPriorityFeePerGas is invalid").SetInternal(err)
+		}
+	} else {
+		parsed, err = client.SuggestGasTipCap(ctx)
+		if err != nil {
+			err = fmt.Errorf("failed to suggest tipCap: %w", err)
+		}
+	}
+
+	return
+}
+
+func parseFeeCap(feeCap string, client *ethclient.Client, ctx context.Context) (parsed *big.Int, err error) {
 	if feeCap != "" {
-		var ok bool
-		price, ok = new(big.Int).SetString(feeCap, 10)
-		if !ok {
-			return nil, echo.NewHTTPError(http.StatusBadRequest, "FeeCap is not a valid number")
+		feeCap = replaceLeadingZeroesFromHexNumber(feeCap)
+		parsed, err = hexutil.DecodeBig(feeCap)
+		if err != nil {
+			err = echo.NewHTTPError(http.StatusBadRequest, "MaxFeePerGas is invalid").SetInternal(err)
 		}
 	} else {
-		price, err = client.SuggestGasPrice(ctx)
+		parsed, err = client.SuggestGasPrice(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to suggest fee cap: %w", err)
+			err = fmt.Errorf("failed to suggest feeCap: %w", err)
 		}
 	}
 
-	return price, nil
+	return
 }
 
-func parseGas(gas string, from common.Address, dynTx *types.DynamicFeeTx, client *ethclient.Client, ctx context.Context) (parsed uint64, err error) {
+func parseGas(gas string, from common.Address, tx *types.Transaction, client *ethclient.Client, ctx context.Context) (parsed uint64, err error) {
 	if gas != "" {
-		parsed, err = strconv.ParseUint(gas, 10, 64)
+		gas = replaceLeadingZeroesFromHexNumber(gas)
+		parsed, err = hexutil.DecodeUint64(gas)
 		if err != nil {
-			return 0, echo.NewHTTPError(http.StatusBadRequest, "Invalid gas value").SetInternal(err)
+			err = echo.NewHTTPError(http.StatusBadRequest, "Gas is invalid").SetInternal(err)
 		}
 	} else {
 		parsed, err = client.EstimateGas(ctx, ethereum.CallMsg{
-			From:      from,
-			To:        dynTx.To,
-			GasFeeCap: dynTx.GasFeeCap,
-			GasTipCap: dynTx.GasTipCap,
-			Value:     dynTx.Value,
-			Data:      dynTx.Data,
-		})
-		if err != nil {
-			return 0, fmt.Errorf("failed to estimate gas: %w", err)
-		}
-	}
-
-	return parsed, nil
-}
-
-func parseLegacyGas(gas string, from common.Address, tx *types.LegacyTx, client *ethclient.Client, ctx context.Context) (parsed uint64, err error) {
-	if gas != "" {
-		parsed, err = strconv.ParseUint(gas, 10, 64)
-		if err != nil {
-			return 0, echo.NewHTTPError(http.StatusBadRequest, "Invalid gas value").SetInternal(err)
-		}
-	} else {
-		parsed, err = client.EstimateGas(ctx, ethereum.CallMsg{
-			From:     from,
-			To:       tx.To,
-			GasPrice: tx.GasPrice,
-			Value:    tx.Value,
-			Data:     tx.Data,
+			From:       from,
+			To:         tx.To(),
+			GasFeeCap:  tx.GasFeeCap(),
+			GasTipCap:  tx.GasTipCap(),
+			GasPrice:   tx.GasPrice(),
+			Value:      tx.Value(),
+			Data:       tx.Data(),
+			AccessList: tx.AccessList(),
 		})
 		if err != nil {
 			return 0, fmt.Errorf("failed to estimate gas: %w", err)
@@ -249,7 +318,7 @@ func hasSufficientBalance(tx *types.Transaction, from common.Address, client *et
 		return false, fmt.Errorf("failed to get current balance: %w", err)
 	}
 
-	if tx.Type() == types.LegacyTxType {
+	if tx.Type() == types.LegacyTxType || tx.Type() == types.AccessListTxType {
 		maxFee := new(big.Int).Mul(tx.GasPrice(), new(big.Int).SetUint64(tx.Gas()))
 		total := new(big.Int).Add(tx.Value(), maxFee)
 
@@ -266,6 +335,20 @@ func hasSufficientBalance(tx *types.Transaction, from common.Address, client *et
 	}
 
 	return true, nil
+}
+
+// Must be done to prevent hexutil.DecodeBig and hexutil.DecodeUint64 error
+func replaceLeadingZeroesFromHexNumber(hexNumber string) string {
+	if !strings.HasPrefix(hexNumber, "0x") {
+		return hexNumber
+	}
+
+	adjustedNumber := leadingZeroesRegex.ReplaceAllString(hexNumber[2:], "")
+
+	if adjustedNumber == "" {
+		adjustedNumber = "0"
+	}
+	return fmt.Sprintf("0x%s", adjustedNumber)
 }
 
 // EIP191 https://eips.ethereum.org/EIPS/eip-191
