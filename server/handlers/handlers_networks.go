@@ -59,7 +59,7 @@ var networks = models.Networks{
 		Testnet:       true,
 	},
 	{
-		Name:          "Avalanche C-Chain",
+		Name:          "Avalanche C-ChainID",
 		ChainID:       43114,
 		ChainIDHex:    fmt.Sprintf("0x%x", 43114),
 		BlockExplorer: "https://snowtrace.io",
@@ -89,7 +89,7 @@ var networks = models.Networks{
 		Testnet:       false,
 	},
 	{
-		Name:          "Binance Smart Chain Mainnet",
+		Name:          "Binance Smart ChainID Mainnet",
 		ChainID:       56,
 		ChainIDHex:    fmt.Sprintf("0x%x", 56),
 		BlockExplorer: "https://bscscan.com",
