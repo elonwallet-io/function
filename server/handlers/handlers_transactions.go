@@ -5,36 +5,13 @@ import (
 	"github.com/Leantar/elonwallet-function/models"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/labstack/echo/v4"
 	"net/http"
 )
 
 func (a *Api) HandleSendTransactionInitialize() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user := c.Get("user").(models.User)
-
-		options, err := a.loginInitialize(user, SendTransactionKey)
-		if err != nil {
-			return err
-		}
-
-		return c.JSON(http.StatusOK, options)
-	}
-}
-
-func (a *Api) HandleSendTransactionFinalize() echo.HandlerFunc {
-	type input struct {
-		AssertionResponse protocol.CredentialAssertionResponse `json:"assertion_response"`
-		TransactionParams transactionParams                    `json:"transaction_params"`
-	}
-
-	type output struct {
-		Hash string `json:"hash"`
-	}
-
-	return func(c echo.Context) error {
-		var in input
+		var in transactionParams
 		if err := c.Bind(&in); err != nil {
 			return err
 		}
@@ -44,12 +21,39 @@ func (a *Api) HandleSendTransactionFinalize() echo.HandlerFunc {
 
 		user := c.Get("user").(models.User)
 
-		_, err := a.loginFinalize(user, SendTransactionKey, in.AssertionResponse)
+		options, err := a.transactionInitialize(&user, &in, SendTransactionKey)
 		if err != nil {
 			return err
 		}
 
-		network, ok := networks.FindByChainIDHex(in.TransactionParams.ChainID)
+		err = a.repo.UpsertUser(user)
+		if err != nil {
+			return err
+		}
+
+		return c.JSON(http.StatusOK, options)
+	}
+}
+
+func (a *Api) HandleSendTransactionFinalize() echo.HandlerFunc {
+	type output struct {
+		Hash string `json:"hash"`
+	}
+
+	return func(c echo.Context) error {
+		user := c.Get("user").(models.User)
+
+		params, err := a.transactionFinalize(&user, c.Request(), SendTransactionKey)
+		if err != nil {
+			return err
+		}
+
+		err = a.repo.UpsertUser(user)
+		if err != nil {
+			return err
+		}
+
+		network, ok := networks.FindByChainIDHex(params.ChainID)
 		if !ok {
 			return echo.NewHTTPError(http.StatusBadRequest, "Network does not exist")
 		}
@@ -59,7 +63,7 @@ func (a *Api) HandleSendTransactionFinalize() echo.HandlerFunc {
 			return fmt.Errorf("failed to dial rpc: %w", err)
 		}
 
-		signedTx, err := createSignedTransaction(user, in.TransactionParams, network, client, c.Request().Context())
+		signedTx, err := createSignedTransaction(user, params, network, client, c.Request().Context())
 		if err != nil {
 			return err
 		}
@@ -75,29 +79,7 @@ func (a *Api) HandleSendTransactionFinalize() echo.HandlerFunc {
 
 func (a *Api) HandleSignTransactionInitialize() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		user := c.Get("user").(models.User)
-
-		options, err := a.loginInitialize(user, SignTransactionKey)
-		if err != nil {
-			return err
-		}
-
-		return c.JSON(http.StatusOK, options)
-	}
-}
-
-func (a *Api) HandleSignTransactionFinalize() echo.HandlerFunc {
-	type input struct {
-		AssertionResponse protocol.CredentialAssertionResponse `json:"assertion_response"`
-		TransactionParams transactionParams                    `json:"transaction_params"`
-	}
-
-	type output struct {
-		Transaction string `json:"transaction"`
-	}
-
-	return func(c echo.Context) error {
-		var in input
+		var in transactionParams
 		if err := c.Bind(&in); err != nil {
 			return err
 		}
@@ -107,12 +89,39 @@ func (a *Api) HandleSignTransactionFinalize() echo.HandlerFunc {
 
 		user := c.Get("user").(models.User)
 
-		_, err := a.loginFinalize(user, SignTransactionKey, in.AssertionResponse)
+		options, err := a.transactionInitialize(&user, &in, SignTransactionKey)
 		if err != nil {
 			return err
 		}
 
-		network, ok := networks.FindByChainIDHex(in.TransactionParams.ChainID)
+		err = a.repo.UpsertUser(user)
+		if err != nil {
+			return err
+		}
+
+		return c.JSON(http.StatusOK, options)
+	}
+}
+
+func (a *Api) HandleSignTransactionFinalize() echo.HandlerFunc {
+	type output struct {
+		Transaction string `json:"transaction"`
+	}
+
+	return func(c echo.Context) error {
+		user := c.Get("user").(models.User)
+
+		params, err := a.transactionFinalize(&user, c.Request(), SignTransactionKey)
+		if err != nil {
+			return err
+		}
+
+		err = a.repo.UpsertUser(user)
+		if err != nil {
+			return err
+		}
+
+		network, ok := networks.FindByChainIDHex(params.ChainID)
 		if !ok {
 			return echo.NewHTTPError(http.StatusBadRequest, "Network does not exist")
 		}
@@ -122,7 +131,7 @@ func (a *Api) HandleSignTransactionFinalize() echo.HandlerFunc {
 			return fmt.Errorf("failed to dial rpc: %w", err)
 		}
 
-		signedTx, err := createSignedTransaction(user, in.TransactionParams, network, client, c.Request().Context())
+		signedTx, err := createSignedTransaction(user, params, network, client, c.Request().Context())
 		if err != nil {
 			return err
 		}

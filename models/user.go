@@ -25,11 +25,12 @@ func NewUser(email string, displayName string) User {
 	return User{
 		Email: email,
 		WebauthnData: WebauthnData{
-			ID:          id.String(),
-			Name:        email,
-			DisplayName: displayName,
-			Credentials: make(map[string]webauthn.Credential),
-			Sessions:    make(map[string]webauthn.SessionData),
+			ID:                  id.String(),
+			Name:                email,
+			DisplayName:         displayName,
+			Credentials:         make(map[string]webauthn.Credential),
+			Sessions:            make(map[string]webauthn.SessionData),
+			PendingTransactions: make(map[string]TransactionParams),
 		},
 		Wallets:                 make(Wallets, 0),
 		EmergencyAccessContacts: make(map[string]*EmergencyAccessContact),

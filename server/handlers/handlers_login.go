@@ -19,7 +19,12 @@ func (a *Api) HandleLoginInitialize() echo.HandlerFunc {
 			return err
 		}
 
-		options, err := a.loginInitialize(user, LoginKey)
+		options, err := a.loginInitialize(&user, LoginKey)
+		if err != nil {
+			return err
+		}
+
+		err = a.repo.UpsertUser(user)
 		if err != nil {
 			return err
 		}
@@ -38,15 +43,9 @@ func (a *Api) HandleLoginFinalize() echo.HandlerFunc {
 			return err
 		}
 
-		session, ok := user.WebauthnData.Sessions[LoginKey]
-		if !ok {
-			return echo.NewHTTPError(http.StatusBadRequest, "Login must be initialized beforehand")
-		}
-		delete(user.WebauthnData.Sessions, LoginKey)
-
-		cred, err := a.w.FinishLogin(user.WebauthnData, session, c.Request())
+		cred, _, err := a.loginFinalize(&user, c.Request(), LoginKey)
 		if err != nil {
-			return echo.NewHTTPError(http.StatusBadRequest, err.Error())
+			return err
 		}
 
 		err = a.repo.UpsertUser(user)
