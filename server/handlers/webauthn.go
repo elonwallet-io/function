@@ -31,42 +31,51 @@ func getCreationOptions(credentialExcludeList []protocol.CredentialDescriptor) w
 	}
 }
 
-func (a *Api) loginInitialize(user models.User, sessionKey string) (*protocol.CredentialAssertion, error) {
+func (a *Api) loginInitialize(user *models.User, sessionKey string) (*protocol.CredentialAssertion, error) {
 	options, session, err := a.w.BeginLogin(user.WebauthnData)
 	if err != nil {
 		return nil, echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
 	user.WebauthnData.Sessions[sessionKey] = *session
-	err = a.repo.UpsertUser(user)
+	return options, nil
+}
+
+func (a *Api) loginFinalize(user *models.User, req *http.Request, sessionKey string) (*webauthn.Credential, *webauthn.SessionData, error) {
+	session, ok := user.WebauthnData.Sessions[sessionKey]
+	if !ok {
+		return nil, nil, echo.NewHTTPError(http.StatusBadRequest, "Please call the initialize endpoint first")
+	}
+	delete(user.WebauthnData.Sessions, sessionKey)
+
+	cred, err := a.w.FinishLogin(user.WebauthnData, session, req)
+	if err != nil {
+		return nil, nil, echo.NewHTTPError(http.StatusBadRequest, err.Error())
+	}
+
+	return cred, &session, nil
+}
+
+func (a *Api) transactionInitialize(user *models.User, params *transactionParams, sessionKey string) (*protocol.CredentialAssertion, error) {
+	options, err := a.loginInitialize(user, sessionKey)
 	if err != nil {
 		return nil, err
 	}
+
+	challenge := user.WebauthnData.Sessions[sessionKey].Challenge
+	user.WebauthnData.PendingTransactions[challenge] = models.TransactionParams(*params)
 
 	return options, nil
 }
 
-func (a *Api) loginFinalize(user models.User, sessionKey string, response protocol.CredentialAssertionResponse) (*webauthn.Credential, error) {
-	session, ok := user.WebauthnData.Sessions[sessionKey]
-	if !ok {
-		return nil, echo.NewHTTPError(http.StatusBadRequest, "Transaction must be initialized beforehand")
-	}
-	delete(user.WebauthnData.Sessions, sessionKey)
-
-	car, err := response.Parse()
+func (a *Api) transactionFinalize(user *models.User, req *http.Request, sessionKey string) (*transactionParams, error) {
+	_, session, err := a.loginFinalize(user, req, sessionKey)
 	if err != nil {
 		return nil, echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
-	cred, err := a.w.ValidateLogin(user.WebauthnData, session, car)
-	if err != nil {
-		return nil, echo.NewHTTPError(http.StatusBadRequest, err.Error())
-	}
+	params := user.WebauthnData.PendingTransactions[session.Challenge]
+	delete(user.WebauthnData.PendingTransactions, session.Challenge)
 
-	err = a.repo.UpsertUser(user)
-	if err != nil {
-		return nil, err
-	}
-
-	return cred, nil
+	return (*transactionParams)(&params), nil
 }

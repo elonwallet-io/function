@@ -49,7 +49,7 @@ type parsedCommonParams struct {
 	Data  []byte
 }
 
-func createTransaction(params transactionParams, network models.Network, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
+func createTransaction(params *transactionParams, network models.Network, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
 	if params.Type == "0x1" {
 		if params.AccessList != nil {
 			return createLegacyAccessListTransaction(params, client, ctx)
@@ -61,7 +61,7 @@ func createTransaction(params transactionParams, network models.Network, client 
 	}
 }
 
-func createLegacyAccessListTransaction(params transactionParams, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
+func createLegacyAccessListTransaction(params *transactionParams, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
 	commonParams, err := parseCommonParams(params, client, ctx)
 	if err != nil {
 		return nil, err
@@ -92,7 +92,7 @@ func createLegacyAccessListTransaction(params transactionParams, client *ethclie
 	return types.NewTx(tx), nil
 }
 
-func createLegacyTransaction(params transactionParams, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
+func createLegacyTransaction(params *transactionParams, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
 	commonParams, err := parseCommonParams(params, client, ctx)
 	if err != nil {
 		return nil, err
@@ -122,7 +122,7 @@ func createLegacyTransaction(params transactionParams, client *ethclient.Client,
 	return types.NewTx(tx), nil
 }
 
-func createDynamicFeeTransaction(params transactionParams, network models.Network, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
+func createDynamicFeeTransaction(params *transactionParams, network models.Network, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
 	commonParams, err := parseCommonParams(params, client, ctx)
 	if err != nil {
 		return nil, err
@@ -163,7 +163,7 @@ func createDynamicFeeTransaction(params transactionParams, network models.Networ
 	return types.NewTx(tx), nil
 }
 
-func parseCommonParams(params transactionParams, client *ethclient.Client, ctx context.Context) (*parsedCommonParams, error) {
+func parseCommonParams(params *transactionParams, client *ethclient.Client, ctx context.Context) (*parsedCommonParams, error) {
 	value, err := parseValue(params.Value)
 	if err != nil {
 		return nil, err
@@ -402,7 +402,7 @@ func signTransaction(tx *types.Transaction, privateKeyHex string) (*types.Transa
 	return signedTx, nil
 }
 
-func createSignedTransaction(user models.User, params transactionParams, network models.Network, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
+func createSignedTransaction(user models.User, params *transactionParams, network models.Network, client *ethclient.Client, ctx context.Context) (*types.Transaction, error) {
 	wallet, ok := user.Wallets.FindByAddress(params.From)
 	if !ok {
 		return nil, echo.NewHTTPError(http.StatusBadRequest, "Sending wallet does not exist")

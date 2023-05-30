@@ -41,9 +41,9 @@ func (s *Server) registerRoutes() error {
 	s.echo.POST("/message/sign", api.HandleSignPersonal(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey, common.ScopeUser))
 	s.echo.POST("/typed-data/sign", api.HandleSignTypedData(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey, common.ScopeUser))
 
-	s.echo.GET("/transaction/sign/initialize", api.HandleSignTransactionInitialize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey, common.ScopeUser))
+	s.echo.POST("/transaction/sign/initialize", api.HandleSignTransactionInitialize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey, common.ScopeUser))
 	s.echo.POST("/transaction/sign/finalize", api.HandleSignTransactionFinalize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey, common.ScopeUser))
-	s.echo.GET("/transaction/send/initialize", api.HandleSendTransactionInitialize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey, common.ScopeUser))
+	s.echo.POST("/transaction/send/initialize", api.HandleSendTransactionInitialize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey, common.ScopeUser))
 	s.echo.POST("/transaction/send/finalize", api.HandleSendTransactionFinalize(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey, common.ScopeUser))
 
 	s.echo.POST("/emergency-access/contacts", api.HandleCreateEmergencyContact(), customMiddleware.CheckAuthentication(s.repo, s.key.PublicKey, common.ScopeUser))
