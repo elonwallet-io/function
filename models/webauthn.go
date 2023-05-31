@@ -12,7 +12,7 @@ type WebauthnData struct {
 	DisplayName         string                          `json:"display_name"`
 	Credentials         map[string]webauthn.Credential  `json:"credentials"`
 	Sessions            map[string]webauthn.SessionData `json:"sessions"`
-	PendingTransactions map[string]TransactionParams    `json:"pending_transactions"` //key is the challenge string
+	PendingTransactions map[string]TransactionParams    `json:"pending_transactions"` //Uses  webauthn challenge strings as its keys
 }
 
 func (w WebauthnData) WebAuthnID() []byte {
