@@ -37,6 +37,8 @@ func (a *Api) loginInitialize(user *models.User, sessionKey string) (*protocol.C
 		return nil, echo.NewHTTPError(http.StatusBadRequest, err.Error())
 	}
 
+	removePendingTransaction(user, sessionKey)
+
 	user.WebauthnData.Sessions[sessionKey] = *session
 	return options, nil
 }
@@ -78,4 +80,15 @@ func (a *Api) transactionFinalize(user *models.User, req *http.Request, sessionK
 	delete(user.WebauthnData.PendingTransactions, session.Challenge)
 
 	return (*transactionParams)(&params), nil
+}
+
+// Deletes a pending transaction corresponding to the sessionKey.
+// Prevents bloating the disk if a user decides to not finish ongoing transactions before starting a new one
+func removePendingTransaction(user *models.User, sessionKey string) {
+	session, ok := user.WebauthnData.Sessions[sessionKey]
+	if !ok {
+		return
+	}
+
+	delete(user.WebauthnData.PendingTransactions, session.Challenge)
 }
