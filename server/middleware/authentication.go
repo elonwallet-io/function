@@ -71,7 +71,7 @@ func CheckEnclaveAuthentication(repo common.Repository, cfg config.Config) echo.
 				return err
 			}
 
-			claims, err := common.ValidateJWT(bearer[7:], enclaveKeyFunc(cfg))
+			claims, err := common.ValidateJWT(bearer[7:], enclaveKeyFunc(cfg, user, c))
 			if err != nil {
 				return echo.NewHTTPError(http.StatusUnauthorized, invalidSession).SetInternal(err)
 			}
@@ -125,18 +125,14 @@ func frontendKeyFunc(pk ed25519.PublicKey) jwt.Keyfunc {
 	}
 }
 
-func enclaveKeyFunc(cfg config.Config) jwt.Keyfunc {
+func enclaveKeyFunc(cfg config.Config, user models.User, c echo.Context) jwt.Keyfunc {
 	return func(token *jwt.Token) (interface{}, error) {
 		email, err := token.Claims.GetSubject()
 		if err != nil {
 			return nil, err
 		}
 
-		backendApiClient, err := common.NewBackendApiClient(cfg.BackendURL, models.User{}, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create backend api client: %w", err)
-		}
-		enclaveURL, err := backendApiClient.GetEnclaveURL(email)
+		enclaveURL, err := getEnclaveURL(cfg, user, email)
 		if err != nil {
 			return nil, err
 		}
@@ -146,11 +142,31 @@ func enclaveKeyFunc(cfg config.Config) jwt.Keyfunc {
 			return nil, err
 		}
 
+		c.Set("enclave_url", enclaveURL)
+
 		jwtSigningKey, err := enclaveApiClient.GetJWTVerificationKey()
 		if err != nil {
 			return nil, err
 		}
 
 		return jwtSigningKey, nil
+	}
+}
+
+func getEnclaveURL(cfg config.Config, user models.User, email string) (string, error) {
+	if grant, ok := user.EmergencyAccessGrants[email]; ok {
+		return grant.EnclaveURL, nil
+	} else {
+		backendApiClient, err := common.NewBackendApiClient(cfg.BackendURL, models.User{}, nil)
+		if err != nil {
+			return "", fmt.Errorf("failed to create backend api client: %w", err)
+		}
+
+		enclaveURL, err := backendApiClient.GetEnclaveURL(email)
+		if err != nil {
+			return "", err
+		}
+
+		return enclaveURL, nil
 	}
 }
