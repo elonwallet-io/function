@@ -13,21 +13,13 @@ func (a *Api) HandleEmergencyAccessGrantInvitation() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		user := c.Get("user").(models.User)
 		claims := c.Get("claims").(common.EnclaveClaims)
-
-		backendApiClient, err := common.NewBackendApiClient(a.cfg.BackendURL, user, a.signingKey.PrivateKey)
-		if err != nil {
-			return fmt.Errorf("failed to create backend api client: %w", err)
-		}
-		enclaveURL, err := backendApiClient.GetEnclaveURL(claims.Subject)
-		if err != nil {
-			return err
-		}
+		enclaveURL := c.Get("enclave_url").(string)
 
 		user.EmergencyAccessGrants[claims.Subject] = &models.EmergencyAccessGrant{
 			Email:      claims.Subject,
 			EnclaveURL: enclaveURL,
 		}
-		err = a.repo.UpsertUser(user)
+		err := a.repo.UpsertUser(user)
 		if err != nil {
 			return err
 		}
