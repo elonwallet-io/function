@@ -6,12 +6,12 @@ COPY . /app/
 WORKDIR /app/
 
 RUN mkdir /data && \
-    go build -o backend -ldflags="-extldflags=-static -w" .
+    go build -o wallet-service -ldflags="-extldflags=-static -w" .
 
 FROM gcr.io/distroless/static
 
 COPY --from=build-env --chown=nonroot:nonroot \
-    /app/backend \
+    /app/wallet-service \
     /app/
 
 COPY --from=build-env --chown=nonroot:nonroot \
@@ -21,4 +21,4 @@ COPY --from=build-env --chown=nonroot:nonroot \
 USER nonroot:nonroot
 WORKDIR /app/
 
-ENTRYPOINT [ "/app/backend" ]
+ENTRYPOINT [ "/app/wallet-service" ]
